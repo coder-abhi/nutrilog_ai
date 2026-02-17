@@ -4,7 +4,10 @@
   --background: #ffffff;
   --foreground: #171717;
 }
-
+#__next-build-watcher,
+[data-nextjs-build-indicator] {
+  display: none !important;
+}
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
