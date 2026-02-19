@@ -1,0 +1,48 @@
+.bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding: 1rem;
+  background: #000;
+  border-top: 1px solid #222;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.input {
+  flex: 1;
+  padding: 0.75rem;
+  border-radius: 6px;
+  border: none;
+  outline: none;
+  font-size: 1rem;
+  background: #111;
+  color: #fff;
+}
+
+.button {
+  padding: 0.75rem 1.25rem;
+  border-radius: 6px;
+  border: none;
+  background: #fff;
+  color: #000;
+  font-size: 1rem;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.spinner {
+  width: 26px;
+  height: 26px;
+  border: 2px solid white;
+  border-top: 2px solid transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

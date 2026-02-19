@@ -1,0 +1,28 @@
+.container {
+  padding: 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.section {
+  margin-top: 1.5rem;
+}
+
+.sugarOk {
+  color: green;
+  font-weight: bold;
+}
+
+.sugarExceeded {
+  color: red;
+  font-weight: bold;
+}
+
+.summaryWarning {
+  color: red;
+}
+
+.summarySuccess {
+  color: green;
+}
+

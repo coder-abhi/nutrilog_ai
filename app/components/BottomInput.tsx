@@ -3,8 +3,9 @@
 "use client";
 
 import { useState } from "react";
+import styles from "./BottomInput.module.css";
 
-export default function BottomInput() {
+export default function BottomInput({ onCaloriesCalculated, onIntakeCalculated }) {
 //   const [text, setText] = useState("");
 
 //   const handleSubmit = () => {
@@ -14,16 +15,15 @@ export default function BottomInput() {
 //   };
 
 const [input, setInput] = useState("");
-const [result, setResult] = useState("null");
-const [llmInput, setLlmInput] = useState("");
+const [result, setResult] = useState<string | null>(null);
+const [isLoading, setIsLoading] = useState(false);
 
    
 
     
   const calculateCalories = async () => {
     if (!input.trim()) return;
-    setResult("Calculating...");
-    setLlmInput(input)
+    const userText = input;
     setInput("")
       try {
       const response = await fetch("http://127.0.0.1:8000/calories", {
@@ -31,14 +31,40 @@ const [llmInput, setLlmInput] = useState("");
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ sentence: llmInput })
+        body: JSON.stringify({ sentence: userText })
       });
   
       const data = await response.json();
-      console.log(data);
-      setResult(data);
       
-      setResult(data.toString());
+      setResult(JSON.stringify(data));
+      onCaloriesCalculated(data);
+      
+      setInput("");
+    } catch (error) {
+      console.error("Error: " + error);
+    }
+  };
+
+  const calculateIntake = async () => {
+    if (!input.trim()) return;
+    // setResult("Calculating...");
+    const userText = input;
+    setInput("Analyzing ... ( "+input+" )")
+    setIsLoading(true);
+      try {
+      const response = await fetch("http://127.0.0.1:8000/intake", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ sentence: userText })
+      });
+  
+      const data = await response.json();
+      
+      setResult(JSON.stringify(data));
+      onIntakeCalculated(data);
+      setIsLoading(false);
       setInput("");
     } catch (error) {
       console.error("Error: " + error);
@@ -46,54 +72,22 @@ const [llmInput, setLlmInput] = useState("");
   };
   
   return (
-    
-    <div
-      style={{
-        position: "fixed",
-        bottom: 0,
-        left: 0,
-        width: "100%",
-        padding: "1rem",
-        background: "#000", // BLACK BACKGROUND
-        borderTop: "1px solid #222",
-        display: "flex",
-        gap: "0.5rem"
-      }}
-    >
-      Helllooooooooo
-      {result && <p>Calories burned: {result}</p>}
+    <div className={styles.bar}>
       <input
         type="text"
         placeholder="Type: I walked 5 km, I ate 2 chapatis..."
         value={input}
         onChange={(e) => setInput(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && calculateCalories()}
-        style={{
-          flex: 1,
-          padding: "0.75rem",
-          borderRadius: "6px",
-          border: "none",
-          outline: "none",
-          fontSize: "1rem",
-          background: "#111",
-          color: "#fff"
-        }}
+        onKeyDown={(e) => e.key === "Enter" && calculateIntake()}
+        className={styles.input}
       />
 
-      <button
-        onClick={calculateCalories}
-        style={{
-          padding: "0.75rem 1.25rem",
-          borderRadius: "6px",
-          border: "none",
-          background: "#fff",
-          color: "#000",
-          fontSize: "1rem",
-          cursor: "pointer",
-          fontWeight: "bold"
-        }}
-      >
-        Submit
+<button 
+  onClick={calculateIntake} 
+  className={styles.button}
+  disabled={isLoading}
+>
+      {isLoading ? <div className={styles.spinner}>...</div> : "Submit"}
       </button>
     </div>
   );
