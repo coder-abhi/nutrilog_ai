@@ -6,6 +6,8 @@ import os
 from dotenv import load_dotenv
 import json
 
+from models import Activity,ActivityInput,ExtractionResponse
+
 load_dotenv(override=True)
 
 api_key = os.getenv('OPENAI_API_KEY')
@@ -31,92 +33,73 @@ USER_CONFIG = {
     "activity_level": "low",
 }
 
-class ActivityInput(BaseModel):
-    sentence: str
-
-class NutritionOutput(BaseModel):
-    calories: int
-    protein: int
-    carbs: int
-    fat: int
-    fibre: int
-    sugar: int
-    saturated_fat: int
-    sodium: int
-
-@app.post("/calories")
+@app.post("/test")
 def calculate(data: ActivityInput):
+    return "Hello, World!"
 
-    system_prompt = f"""
-You are a fitness calorie calculator.
+from typing import List
+# from pydantic import BaseModel
 
-User details:
-Age: {USER_CONFIG['age']}
-Weight: {USER_CONFIG['weight']} kg
-Gender: {USER_CONFIG['gender']}
-
-When given a sentence describing physical activity,
-calculate estimated calories burned.
-
-Return ONLY a single integer.
-No text.
-No explanation.
-No units.
-Just the number.
-"""
-
-    response = client.chat.completions.create(
-        model="gpt-5-nano",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": data.sentence}
-        ],
-    )
-
-    return int(response.choices[0].message.content.strip())
-
-
-@app.post("/intake", response_model=NutritionOutput)
+@app.post("/log_input", response_model=ExtractionResponse)
 def analyze_food(data: ActivityInput):
 
     system_prompt = f"""
-You are a precise nutrition analysis engine.
-
-When the user describes food they ate, estimate total nutritional values.
+You are a structured health data extraction and estimation engine.
 User details:
 Age: {USER_CONFIG['age']}
 Weight: {USER_CONFIG['weight']} kg
 Gender: {USER_CONFIG['gender']}
+From the user's sentence, extract:
+
+1) Physical activities performed.
+2) Foods consumed.
 
 Return ONLY valid JSON.
 Do NOT include explanations.
-Do NOT include units in the values.
+Do NOT include markdown.
 Do NOT include text before or after the JSON.
-Do NOT use markdown formatting.
 
 Output format must be exactly:
 
 {{
-  "calories": number,
-  "protein": number,
-  "carbs": number,
-  "fat": number,
-  "fibre": number,
-  "sugar": number,
-  "saturated_fat": number,
-  "sodium": number
+  "activities": [
+    {{
+      "type": string,
+      "quantity": number,
+      "unit": string,
+      "calories_burned": number
+    }}
+  ],
+  "foods": [
+    {{
+      "name": string,
+      "quantity": number,
+      "unit": string,
+      "calories": number,
+      "protein": number,
+      "carbs": number,
+      "fat": number,
+      "fibre": number,
+      "sugar": number,
+      "saturated_fat": number,
+      "sodium": number
+    }}
+  ]
 }}
 
 Rules:
-- All values must be realistic estimates.
-- Numbers must be integers.
-- If quantity is unclear, make a reasonable assumption.
-- If food is unknown, estimate using common equivalents.
-- Combine all items into total daily intake for that message.
+- All numbers must be integers.
+- Always include unit.
+- If qty or unit is not very clear in input then make realistic guess using activity or food
+- Estimate realistic nutritional values.
+- Estimate calories burned using user weight and realistic MET values.
+- If a category has no entries, return an empty array.
+- Do not invent unrealistic quantities.
+
 """
 
     response = client.chat.completions.create(
-        model="gpt-5-nano",
+        model="gpt-5-mini",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": data.sentence}
@@ -124,8 +107,3 @@ Rules:
     )
 
     return json.loads(response.choices[0].message.content)
-
-
-@app.post("/test")
-def calculate(data: ActivityInput):
-    return "Hello, World!"
