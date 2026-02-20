@@ -5,7 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
 import json
-import crud
+
+from crud import SessionLocal, create_health_log
+from fastapi import Depends
+from sqlalchemy.orm import Session
 
 from models import Activity, ActivityInput, ExtractionResponse
 from utils import aggregate_summary
@@ -14,11 +17,8 @@ from met_engine import calculate_calories_burned
 load_dotenv(override=True)
 
 api_key = os.getenv('OPENAI_API_KEY')
-
 client = OpenAI()
-
 app = FastAPI()
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -29,12 +29,20 @@ app.add_middleware(
 )
 
 USER_CONFIG = {
+    "username": "abhi",
     "age": 25,
     "weight": 82,
     "gender": "male",
     "height": 185.42,
     "activity_level": "low",
 }
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 @app.post("/test")
 def calculate(data: ActivityInput):
@@ -43,8 +51,8 @@ def calculate(data: ActivityInput):
 from typing import List
 # from pydantic import BaseModel
 
-@app.post("/log_input")
-def analyze_food(data: ActivityInput):
+@app.post("/log_input",)
+def analyze_food(data: ActivityInput, db: Session = Depends(get_db)):
 
     system_prompt = f"""
 You are a structured health data extraction and estimation engine.
@@ -120,5 +128,15 @@ Rules:
     print("Calories Burned by MET :",tmp_calori_burned)
     if(tmp_calori_burned != 0):
         summary["calories_burned"] = tmp_calori_burned
+
+        # ---- save to database ----
+    create_health_log(
+        session=db,
+        user_id=USER_CONFIG["username"],  # replace later with real auth user
+        raw_text=data.sentence,
+        activities=parsed.activities,
+        foods=parsed.foods
+    )
+
 
     return summary

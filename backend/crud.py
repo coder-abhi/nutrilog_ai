@@ -115,10 +115,13 @@ def create_health_log(session, user_id: str, raw_text: str, activities, foods):
     return log
 
 
-def get_daily_logs(session, user_id: str, date: datetime):
+def get_daily_logs(session, user_id: str, date: datetime | None = None):
     """
     Fetch all logs for a user on a given date.
     """
+    if date is None:
+        date = datetime.now().date()
+
     start = datetime(date.year, date.month, date.day)
     end = datetime(date.year, date.month, date.day, 23, 59, 59)
 
