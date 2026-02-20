@@ -1,28 +1,250 @@
-.container {
-  padding: 2rem;
-  max-width: 800px;
-  margin: 0 auto;
+ .page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #eef3ff, #ffffff);
 }
 
-.section {
-  margin-top: 1.5rem;
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 2rem;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.9rem;
+  color: #111827;
+}
+
+.nav {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.navLink,
+.navLinkActive {
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  text-decoration: none;
+  color: #111827;
+}
+
+.navLink {
+  background: transparent;
+}
+
+.navLinkActive {
+  background: #111827;
+  color: #ffffff;
+}
+
+.main {
+  flex: 1;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem 1.5rem 5rem;
+}
+
+.hero {
+  margin-bottom: 1.5rem;
+}
+
+.heroTitle {
+  font-size: clamp(1.8rem, 2.4vw, 2.3rem);
+  font-weight: 800;
+  margin-bottom: 0.25rem;
+  color: #111827;
+  text-shadow: 0 1px 3px rgba(255, 255, 255, 0.7);
+}
+
+.heroSubtitle {
+  color: #374151;
+  font-size: 0.98rem;
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.datePill {
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  font-size: 0.85rem;
+  color: #111827;
+}
+
+.viewTabs {
+  display: inline-flex;
+  background: #e5e7eb;
+  border-radius: 999px;
+  padding: 0.2rem;
+}
+
+.viewTab,
+.viewTabActive {
+  border: none;
+  background: transparent;
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: #111827;
+}
+
+.viewTabActive {
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.2);
+}
+
+.cardsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 1rem;
+  padding: 1rem 1rem 0.9rem;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.cardLabel {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #4b5563;
+}
+
+.cardNumber {
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.cardMeta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  color: #374151;
+}
+
+.cardFooter {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #e5e7eb;
+  font-size: 0.85rem;
+  color: #111827;
+}
+
+.macrosRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.macroChip {
+  flex: 1;
+  min-width: 90px;
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.75rem;
+  background: #f3f4ff;
+  font-size: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.macroChip span {
+  color: #4b5563;
+}
+
+.macroChip strong {
+  font-size: 0.95rem;
+  color: #111827;
+}
+
+.sugarOk,
+.sugarExceeded {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.75rem;
+  font-size: 0.8rem;
 }
 
 .sugarOk {
-  color: green;
-  font-weight: bold;
+  background: #ecfdf5;
+  color: #166534;
 }
 
 .sugarExceeded {
-  color: red;
-  font-weight: bold;
+  background: #fef2f2;
+  color: #991b1b;
 }
 
-.summaryWarning {
-  color: red;
+.entriesSection {
+  margin-top: 0.5rem;
 }
 
-.summarySuccess {
-  color: green;
+.sectionTitle {
+  font-size: 1.1rem;
+  margin-bottom: 0.25rem;
+  color: #111827;
 }
 
+.sectionHint {
+  font-size: 0.85rem;
+  color: #4b5563;
+  margin-bottom: 0.75rem;
+}
+
+.placeholderCard {
+  background: #ffffff;
+  border-radius: 0.9rem;
+  padding: 1rem;
+  border: 1px dashed #d1d5db;
+  font-size: 0.9rem;
+  color: #374151;
+}
+
+@media (max-width: 640px) {
+  .header {
+    padding-inline: 1rem;
+  }
+
+  .main {
+    padding-inline: 1rem;
+  }
+
+  .topBar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .nav {
+    gap: 0.4rem;
+  }
+}
