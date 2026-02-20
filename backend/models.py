@@ -38,11 +38,6 @@ class ActivityInput(BaseModel):
     sentence: str
 
 
-def total_calories_burned(log: HealthLog) -> int:
-    return sum(activity.calories_burned for activity in log.activities)
-
-def total_calories_intake(log: HealthLog) -> int:
-    return sum(food.calories for food in log.foods)
 
 def total_macros(log: HealthLog) -> dict:
     return {

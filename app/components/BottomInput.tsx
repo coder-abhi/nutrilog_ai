@@ -5,7 +5,7 @@
 import { useState } from "react";
 import styles from "./BottomInput.module.css";
 
-export default function BottomInput({ onCaloriesCalculated, onIntakeCalculated }) {
+export default function BottomInput({ onCaloriesCalculated }) {
 //   const [text, setText] = useState("");
 
 //   const handleSubmit = () => {
@@ -21,12 +21,16 @@ const [isLoading, setIsLoading] = useState(false);
    
 
     
+
+
   const calculateCalories = async () => {
     if (!input.trim()) return;
+    // setResult("Calculating...");
     const userText = input;
-    setInput("")
+    setInput("Analyzing ... ( "+input+" )")
+    setIsLoading(true);
       try {
-      const response = await fetch("http://127.0.0.1:8000/calories", {
+      const response = await fetch("http://127.0.0.1:8000/log_input", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -38,32 +42,6 @@ const [isLoading, setIsLoading] = useState(false);
       
       setResult(JSON.stringify(data));
       onCaloriesCalculated(data);
-      
-      setInput("");
-    } catch (error) {
-      console.error("Error: " + error);
-    }
-  };
-
-  const calculateIntake = async () => {
-    if (!input.trim()) return;
-    // setResult("Calculating...");
-    const userText = input;
-    setInput("Analyzing ... ( "+input+" )")
-    setIsLoading(true);
-      try {
-      const response = await fetch("http://127.0.0.1:8000/intake", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ sentence: userText })
-      });
-  
-      const data = await response.json();
-      
-      setResult(JSON.stringify(data));
-      onIntakeCalculated(data);
       setIsLoading(false);
       setInput("");
     } catch (error) {
@@ -78,16 +56,24 @@ const [isLoading, setIsLoading] = useState(false);
         placeholder="Type: I walked 5 km, I ate 2 chapatis..."
         value={input}
         onChange={(e) => setInput(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && calculateIntake()}
+        onKeyDown={(e) => e.key === "Enter" && calculateCalories()}
         className={styles.input}
       />
 
 <button 
-  onClick={calculateIntake} 
+  onClick={calculateCalories} 
   className={styles.button}
   disabled={isLoading}
 >
-      {isLoading ? <div className={styles.spinner}>...</div> : "Submit"}
+      {isLoading ? (
+  <div className={styles.spinner}>
+    <span></span>
+    <span></span>
+    <span></span>
+    <span></span>
+    <span></span>
+  </div>
+) : "Submit"}
       </button>
     </div>
   );

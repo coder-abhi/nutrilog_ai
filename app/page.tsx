@@ -5,9 +5,10 @@ import styles from "./page.module.css";
 import { useState } from "react";
 export default function DashboardPage() {
 
-  const [caloriesBurned, setCaloriesBurned] = useState(0);
-  const [foodIntake, setFoodIntake] = useState({
-    calories: 0,
+  // const [caloriesBurned, setCaloriesBurned] = useState(0);
+  const [ summaryData, setSummaryData] = useState({
+    calories_intake: 0,
+    calories_burned: 0,
     protein: 0,
     carbs: 0,
     fibre: 0,
@@ -16,16 +17,16 @@ export default function DashboardPage() {
 
     // sample daily values
   const data = {
-    caloriesIntake: foodIntake?.calories ?? 0, 
-    caloriesBurned: caloriesBurned,
-    protein: foodIntake?.protein ?? 0, // grams
-    carbs: foodIntake?.carbs ?? 0,   // grams
-    fibre: foodIntake?.fibre ?? 0,    // grams
-    sugar: foodIntake?.sugar ?? 0     // grams
+    caloriesIntake: summaryData?.calories_intake ?? 0, 
+    caloriesBurned: summaryData?.calories_burned ?? 0,
+    protein: summaryData?.protein ?? 0, // grams
+    carbs: summaryData?.carbs ?? 0,   // grams
+    fibre: summaryData?.fibre ?? 0,    // grams
+    sugar: summaryData?.sugar ?? 0     // grams
   };
 
   const SUGAR_LIMIT = 25;
-  const sugarExceeded = (foodIntake?.sugar ?? 0) > SUGAR_LIMIT;
+  const sugarExceeded = (summaryData?.sugar ?? 0) > SUGAR_LIMIT;
 
   return (
     <div className={styles.container}>
@@ -71,7 +72,7 @@ export default function DashboardPage() {
         )}
       </section>
       <div>
-        <BottomInput onIntakeCalculated={setFoodIntake} />
+        <BottomInput onCaloriesCalculated={setSummaryData} />
       </div>
     </div>
   );

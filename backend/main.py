@@ -6,7 +6,9 @@ import os
 from dotenv import load_dotenv
 import json
 
-from models import Activity,ActivityInput,ExtractionResponse
+from models import Activity, ActivityInput, ExtractionResponse
+from utils import aggregate_summary
+from met_engine import calculate_calories_burned
 
 load_dotenv(override=True)
 
@@ -40,7 +42,7 @@ def calculate(data: ActivityInput):
 from typing import List
 # from pydantic import BaseModel
 
-@app.post("/log_input", response_model=ExtractionResponse)
+@app.post("/log_input")
 def analyze_food(data: ActivityInput):
 
     system_prompt = f"""
@@ -49,6 +51,7 @@ User details:
 Age: {USER_CONFIG['age']}
 Weight: {USER_CONFIG['weight']} kg
 Gender: {USER_CONFIG['gender']}
+Region: India, Maharastra
 From the user's sentence, extract:
 
 1) Physical activities performed.
@@ -106,4 +109,15 @@ Rules:
         ],
     )
 
-    return json.loads(response.choices[0].message.content)
+    llm_return = json.loads(response.choices[0].message.content)
+    parsed = ExtractionResponse(**llm_return)
+    summary = aggregate_summary(parsed.activities, parsed.foods)
+    tmp_calori_burned = 0
+    for activity in parsed.activities: 
+        tmp_calori_burned += calculate_calories_burned(activity.type,activity.quantity,activity.unit,USER_CONFIG['weight'])
+
+    print("Calories Burned by MET :",tmp_calori_burned)
+    if(tmp_calori_burned != 0):
+        summary["calories_burned"] = tmp_calori_burned
+
+    return summary
