@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
 import json
+import crud
 
 from models import Activity, ActivityInput, ExtractionResponse
 from utils import aggregate_summary
