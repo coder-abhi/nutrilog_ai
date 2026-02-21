@@ -14,22 +14,16 @@ export default function BottomInput({ onCaloriesCalculated }) {
 //     setText("");
 //   };
 
-const [input, setInput] = useState("");
-const [result, setResult] = useState<string | null>(null);
-const [isLoading, setIsLoading] = useState(false);
-
-   
-
-    
-
+  const [input, setInput] = useState("");
+  const [result, setResult] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const calculateCalories = async () => {
     if (!input.trim()) return;
     // setResult("Calculating...");
     const userText = input;
-    setInput("Analyzing ... ( "+input+" )")
     setIsLoading(true);
-      try {
+    try {
       const response = await fetch("http://127.0.0.1:8000/log_input", {
         method: "POST",
         headers: {
@@ -46,6 +40,7 @@ const [isLoading, setIsLoading] = useState(false);
       setInput("");
     } catch (error) {
       console.error("Error: " + error);
+      setIsLoading(false);
     }
   };
   
@@ -58,22 +53,23 @@ const [isLoading, setIsLoading] = useState(false);
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && calculateCalories()}
         className={styles.input}
+        className={styles.input}
       />
 
-<button 
-  onClick={calculateCalories} 
-  className={styles.button}
-  disabled={isLoading}
->
-      {isLoading ? (
-  <div className={styles.spinner}>
-    <span></span>
-    <span></span>
-    <span></span>
-    <span></span>
-    <span></span>
-  </div>
-) : "Submit"}
+      <button
+        onClick={calculateCalories}
+        className={styles.button}
+        disabled={isLoading}
+      >
+        {isLoading ? (
+          <div className={styles.loaderDots}>
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        ) : (
+          "Submit"
+        )}
       </button>
     </div>
   );
