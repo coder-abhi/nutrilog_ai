@@ -36,6 +36,22 @@ class ExtractionResponse(BaseModel):
 
 class ActivityInput(BaseModel):
     sentence: str
+    username: str  # current signed-in user
+
+
+class SignInInput(BaseModel):
+    username: str
+    password: str
+
+
+class SignUpInput(BaseModel):
+    username: str
+    password: str
+    weight_kg: float
+    target_weight_kg: float
+    height_cm: float
+    gender: str  # male | female | other
+    activity_level: str  # sedentary | low | moderate | high | very_high
 
 
 

@@ -1,8 +1,13 @@
 "use client";
 
+import AuthGate from "../components/AuthGate";
 import CalendarView from "../components/CalendarView";
 
 export default function CalendarPage() {
-  return <CalendarView />;
+  return (
+    <AuthGate>
+      <CalendarView />
+    </AuthGate>
+  );
 }
 

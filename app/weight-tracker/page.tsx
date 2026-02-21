@@ -1,8 +1,13 @@
 "use client";
 
+import AuthGate from "../components/AuthGate";
 import WeightTracker from "../components/WeightTracker";
 
 export default function WeightTrackerPage() {
-  return <WeightTracker />;
+  return (
+    <AuthGate>
+      <WeightTracker />
+    </AuthGate>
+  );
 }
 

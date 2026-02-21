@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useAuth } from "../context/AuthContext";
 import styles from "./CalendarView.module.css";
 
 const daysRow = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -47,6 +48,7 @@ const entries = [
 ];
 
 export default function CalendarView() {
+  const { user, signOut } = useAuth();
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -61,6 +63,10 @@ export default function CalendarView() {
           <Link href="/calendar" className={styles.navLinkActive}>
             Calendar
           </Link>
+          <span className={styles.userName}>{user?.username}</span>
+          <button type="button" onClick={signOut} className={styles.signOut}>
+            Sign out
+          </button>
         </nav>
       </header>
 

@@ -1,34 +1,69 @@
 "use client";
 
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useAuth } from "../context/AuthContext";
 import styles from "./WeightTracker.module.css";
 
-const sampleWeights = [
-  { date: "Oct 1", value: 180 },
-  { date: "Oct 5", value: 179 },
-  { date: "Oct 9", value: 178 },
-  { date: "Oct 12", value: 177.5 },
-  { date: "Oct 15", value: 176.8 },
-  { date: "Oct 18", value: 176.2 },
-  { date: "Oct 20", value: 175.9 }
-];
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
-const currentWeight = sampleWeights[sampleWeights.length - 1]?.value ?? 0;
-const targetWeight = 174;
+type WeightEntry = { value_kg: number; recorded_at: string | null };
 
 export default function WeightTracker() {
-  const max = Math.max(...sampleWeights.map((p) => p.value), targetWeight);
-  const min = Math.min(...sampleWeights.map((p) => p.value), targetWeight);
+  const { user, signOut } = useAuth();
+  const [entries, setEntries] = useState<WeightEntry[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const points = sampleWeights
+  const fetchWeights = useCallback(async () => {
+    if (!user?.username) return;
+    try {
+      const res = await fetch(`${API_BASE}/weight_entries?username=${encodeURIComponent(user.username)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setEntries(Array.isArray(data) ? data : []);
+    } catch {
+      setEntries([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.username]);
+
+  useEffect(() => {
+    fetchWeights();
+  }, [fetchWeights]);
+
+  const weightsOrdered = [...entries].reverse();
+  const currentWeightKg = entries[0]?.value_kg ?? user?.weight_kg ?? 0;
+  const targetWeightKg =
+    user?.target_weight_kg != null && user.target_weight_kg > 0
+      ? user.target_weight_kg
+      : Math.max(0, currentWeightKg - 5);
+
+  const allValues = weightsOrdered.length
+    ? weightsOrdered.map((e) => e.value_kg)
+    : (user?.weight_kg ? [user.weight_kg] : []);
+  const max = Math.max(...allValues, targetWeightKg, 1);
+  const min = Math.min(...allValues, targetWeightKg, 0);
+
+  const points = weightsOrdered
     .map((p, index) => {
-      const x = (index / (sampleWeights.length - 1 || 1)) * 100;
-      const y = ((max - p.value) / (max - min || 1)) * 100;
+      const x = (weightsOrdered.length - 1 ? index / (weightsOrdered.length - 1) : 0) * 100;
+      const y = ((max - p.value_kg) / (max - min || 1)) * 100;
       return `${x},${y}`;
     })
     .join(" ");
 
-  const targetY = ((max - targetWeight) / (max - min || 1)) * 100;
+  const targetY = ((max - targetWeightKg) / (max - min || 1)) * 100;
+
+  const formatDate = (iso: string | null) => {
+    if (!iso) return "—";
+    try {
+      const d = new Date(iso);
+      return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    } catch {
+      return iso;
+    }
+  };
 
   return (
     <div className={styles.page}>
@@ -44,6 +79,10 @@ export default function WeightTracker() {
           <Link href="/calendar" className={styles.navLink}>
             Calendar
           </Link>
+          <span className={styles.userName}>{user?.username}</span>
+          <button type="button" onClick={signOut} className={styles.signOut}>
+            Sign out
+          </button>
         </nav>
       </header>
 
@@ -59,11 +98,13 @@ export default function WeightTracker() {
         <section className={styles.summaryRow}>
           <div className={styles.summaryCard}>
             <h2 className={styles.summaryLabel}>Current Weight</h2>
-            <div className={styles.summaryValue}>{currentWeight.toFixed(1)} lb</div>
+            <div className={styles.summaryValue}>
+              {loading ? "…" : `${currentWeightKg.toFixed(1)} kg`}
+            </div>
           </div>
           <div className={styles.summaryCard}>
             <h2 className={styles.summaryLabel}>Target Weight</h2>
-            <div className={styles.summaryValue}>{targetWeight} lb</div>
+            <div className={styles.summaryValue}>{targetWeightKg.toFixed(1)} kg</div>
           </div>
         </section>
 
@@ -102,17 +143,22 @@ export default function WeightTracker() {
 
         <section className={styles.entriesSection}>
           <h2 className={styles.sectionTitle}>Weight entries</h2>
-          <ul className={styles.entriesList}>
-            {sampleWeights
-              .slice()
-              .reverse()
-              .map((entry) => (
-                <li key={entry.date} className={styles.entryRow}>
-                  <div className={styles.entryWeight}>{entry.value} lb</div>
-                  <div className={styles.entryMeta}>{entry.date}</div>
+          {loading ? (
+            <p className={styles.entryMeta}>Loading…</p>
+          ) : entries.length === 0 ? (
+            <p className={styles.entryMeta}>
+              No weight entries yet. Your profile weight ({user?.weight_kg ?? "—"} kg) is used until you add entries via the API.
+            </p>
+          ) : (
+            <ul className={styles.entriesList}>
+              {entries.map((entry, i) => (
+                <li key={entry.recorded_at ?? i} className={styles.entryRow}>
+                  <div className={styles.entryWeight}>{entry.value_kg.toFixed(1)} kg</div>
+                  <div className={styles.entryMeta}>{formatDate(entry.recorded_at)}</div>
                 </li>
               ))}
-          </ul>
+            </ul>
+          )}
         </section>
       </main>
     </div>

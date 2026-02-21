@@ -1,15 +1,48 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, create_engine
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, create_engine, text
 from sqlalchemy.orm import relationship, declarative_base, sessionmaker
 import uuid
+import hashlib
 
 
 Base = declarative_base()
 
 
+def _hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    return _hash_password(password) == stored_hash
+
+
 # -----------------------------
 # DATABASE MODELS (Supabase-ready)
 # -----------------------------
+
+
+class UserDB(Base):
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    username = Column(String, unique=True, nullable=False, index=True)
+    password_hash = Column(String, nullable=False)
+    weight_kg = Column(Float, nullable=False)
+    target_weight_kg = Column(Float, nullable=True)
+    height_cm = Column(Float, nullable=False)
+    gender = Column(String, nullable=False)  # male | female | other
+    activity_level = Column(String, nullable=False)  # sedentary | low | moderate | high | very_high
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class WeightEntryDB(Base):
+    __tablename__ = "weight_entries"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, nullable=False, index=True)
+    value_kg = Column(Float, nullable=False)
+    recorded_at = Column(DateTime, default=datetime.utcnow, index=True)
+
 
 class HealthLogDB(Base):
     __tablename__ = "health_logs"
@@ -64,6 +97,40 @@ class FoodDB(Base):
 # -----------------------------
 # CRUD OPERATIONS
 # -----------------------------
+
+
+def create_user(session, username: str, password: str, weight_kg: float, target_weight_kg: float | None, height_cm: float, gender: str, activity_level: str):
+    """Create a new user. Raises if username exists."""
+    if get_user_by_username(session, username) is not None:
+        raise ValueError("Username already exists")
+    user = UserDB(
+        username=username,
+        password_hash=_hash_password(password),
+        weight_kg=weight_kg,
+        target_weight_kg=target_weight_kg,
+        height_cm=height_cm,
+        gender=gender,
+        activity_level=activity_level,
+    )
+    session.add(user)
+    session.commit()
+    return user
+
+
+def get_user_by_username(session, username: str) -> UserDB | None:
+    """Return user by username or None."""
+    return session.query(UserDB).filter(UserDB.username == username).first()
+
+
+def get_user_by_username_and_password(session, username: str, password: str) -> UserDB | None:
+    """Return user if username and password match, else None."""
+    user = get_user_by_username(session, username)
+    if user is None:
+        return None
+    if not verify_password(password, user.password_hash):
+        return None
+    return user
+
 
 def create_health_log(session, user_id: str, raw_text: str, activities, foods):
     """
@@ -129,8 +196,41 @@ def get_daily_logs(session, user_id: str, date: datetime | None = None):
         HealthLogDB.user_id == user_id,
         HealthLogDB.timestamp >= start,
         HealthLogDB.timestamp <= end
-    ).all()
+    ).order_by(HealthLogDB.timestamp.desc()).all()
+
+
+def create_weight_entry(session, user_id: str, value_kg: float):
+    """Add a weight entry for the user."""
+    entry = WeightEntryDB(user_id=user_id, value_kg=value_kg)
+    session.add(entry)
+    session.commit()
+    return entry
+
+
+def get_weight_entries(session, user_id: str, limit: int = 100):
+    """Get weight entries for user, most recent first."""
+    return (
+        session.query(WeightEntryDB)
+        .filter(WeightEntryDB.user_id == user_id)
+        .order_by(WeightEntryDB.recorded_at.desc())
+        .limit(limit)
+        .all()
+    )
+
 
 engine = create_engine("sqlite:///./local.db", connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base.metadata.create_all(engine)
+
+
+def _migrate_add_target_weight():
+    """Add target_weight_kg to users if missing (e.g. existing DBs)."""
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE users ADD COLUMN target_weight_kg REAL"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+
+_migrate_add_target_weight()

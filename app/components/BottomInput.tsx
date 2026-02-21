@@ -1,62 +1,68 @@
-// app/components/BottomInput.tsx
-
 "use client";
 
 import { useState } from "react";
 import styles from "./BottomInput.module.css";
 
-export default function BottomInput({ onCaloriesCalculated }) {
-//   const [text, setText] = useState("");
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
-//   const handleSubmit = () => {
-//     if (!text.trim()) return;
-//     console.log("User input:", text);
-//     setText("");
-//   };
+export type SummaryData = {
+  calories_intake?: number;
+  calories_burned?: number;
+  protein?: number;
+  carbs?: number;
+  fibre?: number;
+  sugar?: number;
+};
 
+type Props = {
+  username: string;
+  onCaloriesCalculated: (data: SummaryData) => void;
+};
+
+export default function BottomInput({ username, onCaloriesCalculated }: Props) {
   const [input, setInput] = useState("");
-  const [result, setResult] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const calculateCalories = async () => {
     if (!input.trim()) return;
-    // setResult("Calculating...");
     const userText = input;
     setIsLoading(true);
+    setErrorMessage(null);
     try {
-      const response = await fetch("http://127.0.0.1:8000/log_input", {
+      const response = await fetch(`${API_BASE}/log_input`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ sentence: userText })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sentence: userText, username }),
       });
-  
       const data = await response.json();
-      
-      setResult(JSON.stringify(data));
+      if (!response.ok) {
+        setErrorMessage(data.detail || "Request failed");
+        return;
+      }
       onCaloriesCalculated(data);
-      setIsLoading(false);
       setInput("");
-    } catch (error) {
-      console.error("Error: " + error);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Network error. Is the backend running?";
+      setErrorMessage(msg);
+    } finally {
       setIsLoading(false);
     }
   };
-  
+
   return (
     <div className={styles.bar}>
-      <input
-        type="text"
-        placeholder="Type: I walked 5 km, I ate 2 chapatis..."
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && calculateCalories()}
-        className={styles.input}
-        className={styles.input}
-      />
-
-      <button
+      {errorMessage && <p className={styles.errorText}>{errorMessage}</p>}
+      <div className={styles.barRow}>
+        <input
+          type="text"
+          placeholder="Type: I walked 5 km, I ate 2 chapatis..."
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && calculateCalories()}
+          className={styles.input}
+        />
+        <button
         onClick={calculateCalories}
         className={styles.button}
         disabled={isLoading}
@@ -70,7 +76,8 @@ export default function BottomInput({ onCaloriesCalculated }) {
         ) : (
           "Submit"
         )}
-      </button>
+        </button>
+      </div>
     </div>
   );
-};
+}

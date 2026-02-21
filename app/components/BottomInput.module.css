@@ -7,8 +7,14 @@
   background: rgba(249, 250, 251, 0.95);
   border-top: 1px solid #e5e7eb;
   display: flex;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 0.35rem;
   backdrop-filter: blur(10px);
+}
+
+.barRow {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .input {
@@ -20,6 +26,16 @@
   font-size: 1rem;
   background: #ffffff;
   color: #111827;
+}
+
+.input::placeholder {
+  color: #6b7280;
+}
+
+.errorText {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #b91c1c;
 }
 
 .button {
