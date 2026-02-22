@@ -126,9 +126,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(STORAGE_KEY);
   }, []);
 
-  const getAuthHeaders = useCallback(() => {
-    if (!token) return {};
-    return { Authorization: `Bearer ${token}` };
+  const getAuthHeaders = useCallback((): Record<string, string> => {
+    return token
+      ? { Authorization: `Bearer ${token}` }
+      : {};
   }, [token]);
 
   return (
