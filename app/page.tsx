@@ -23,7 +23,7 @@ type FoodEntry = {
 };
 
 function DashboardContent() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, getAuthHeaders } = useAuth();
   const [summaryData, setSummaryData] = useState({
     calories_intake: 0,
     calories_burned: 0,
@@ -38,7 +38,13 @@ function DashboardContent() {
   const fetchTodaySummary = useCallback(async () => {
     if (!user?.username) return;
     try {
-      const res = await fetch(`${API_BASE}/today_summary?username=${encodeURIComponent(user.username)}`);
+      const res = await fetch(`${API_BASE}/today_summary`, {
+        headers: { ...getAuthHeaders() },
+      });
+      if (res.status === 401) {
+        signOut();
+        return;
+      }
       if (!res.ok) return;
       const data = await res.json();
       setSummaryData({
@@ -55,7 +61,7 @@ function DashboardContent() {
     } finally {
       setLoading(false);
     }
-  }, [user?.username]);
+  }, [user?.username, getAuthHeaders, signOut]);
 
   useEffect(() => {
     fetchTodaySummary();
@@ -194,7 +200,6 @@ function DashboardContent() {
       </main>
 
       <BottomInput
-        username={user!.username}
         onCaloriesCalculated={(data) => {
           setSummaryData((prev) => ({
             ...prev,

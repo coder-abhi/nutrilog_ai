@@ -199,9 +199,9 @@ def get_daily_logs(session, user_id: str, date: datetime | None = None):
     ).order_by(HealthLogDB.timestamp.desc()).all()
 
 
-def create_weight_entry(session, user_id: str, value_kg: float):
-    """Add a weight entry for the user."""
-    entry = WeightEntryDB(user_id=user_id, value_kg=value_kg)
+def create_weight_entry(session, user_id: str, value_kg: float, recorded_at: datetime | None = None):
+    """Add a weight entry for the user. recorded_at defaults to now."""
+    entry = WeightEntryDB(user_id=user_id, value_kg=value_kg, recorded_at=recorded_at or datetime.utcnow())
     session.add(entry)
     session.commit()
     return entry
@@ -234,3 +234,11 @@ def _migrate_add_target_weight():
 
 
 _migrate_add_target_weight()
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

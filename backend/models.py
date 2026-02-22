@@ -36,7 +36,6 @@ class ExtractionResponse(BaseModel):
 
 class ActivityInput(BaseModel):
     sentence: str
-    username: str  # current signed-in user
 
 
 class SignInInput(BaseModel):

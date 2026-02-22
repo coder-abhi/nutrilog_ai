@@ -120,6 +120,71 @@
   color: #0b1120;
 }
 
+.logWeightSection {
+  background: #ffffff;
+  border-radius: 1rem;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  margin-bottom: 1.5rem;
+}
+
+.logWeightSection .sectionTitle {
+  color: #111827;
+}
+
+.logWeightRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.logWeightLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.logWeightInput {
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  font-size: 1rem;
+  min-width: 120px;
+  color: #111827;
+  background: #ffffff;
+}
+
+.logWeightInput::placeholder {
+  color: #6b7280;
+}
+
+.logWeightBtn {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: none;
+  background: #111827;
+  color: #f9fafb;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.logWeightBtn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.logWeightError {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: #b91c1c;
+}
+
 .chartSection {
   background: #ffffff;
   border-radius: 1.25rem;
@@ -224,6 +289,15 @@
 
   .chartSection {
     padding-inline: 1rem;
+  }
+
+  .logWeightRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .logWeightBtn {
+    align-self: flex-start;
   }
 }
 

@@ -7,17 +7,18 @@ from dotenv import load_dotenv
 import json
 
 from crud import (
-    SessionLocal,
     create_health_log,
     create_user,
+    get_db,
     get_daily_logs,
-    get_user_by_username,
     get_user_by_username_and_password,
     get_weight_entries,
     create_weight_entry,
 )
 from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
+
+from auth import create_access_token, get_current_user
 
 from models import Activity, ActivityInput, ExtractionResponse, SignInInput, SignUpInput
 from utils import aggregate_summary
@@ -38,15 +39,8 @@ app.add_middleware(
 )
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 @app.post("/test")
-def calculate(data: ActivityInput):
+def calculate(data: ActivityInput, db: Session = Depends(get_db)):
     return "Hello, World!"
 
 from typing import List
@@ -65,8 +59,11 @@ def signup(data: SignUpInput, db: Session = Depends(get_db)):
             gender=data.gender,
             activity_level=data.activity_level,
         )
+        access_token = create_access_token(data={"sub": user.username})
         return {
             "success": True,
+            "access_token": access_token,
+            "token_type": "bearer",
             "user": {
                 "username": user.username,
                 "weight_kg": user.weight_kg,
@@ -85,8 +82,11 @@ def signin(data: SignInInput, db: Session = Depends(get_db)):
     user = get_user_by_username_and_password(db, data.username, data.password)
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid username or password")
+    access_token = create_access_token(data={"sub": user.username})
     return {
         "success": True,
+        "access_token": access_token,
+        "token_type": "bearer",
         "user": {
             "username": user.username,
             "weight_kg": user.weight_kg,
@@ -99,12 +99,17 @@ def signin(data: SignInInput, db: Session = Depends(get_db)):
 
 
 @app.get("/today_summary")
-def today_summary(username: str, db: Session = Depends(get_db)):
-    """Fetch today's aggregated calories/macros and list of food/activity entries for the user."""
-    user = get_user_by_username(db, username)
-    if user is None:
-        raise HTTPException(status_code=401, detail="User not found. Please sign in.")
-    logs = get_daily_logs(db, user.username)
+def today_summary(date: str | None = None, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """Fetch aggregated calories/macros and food/activity entries for the user for a given date (YYYY-MM-DD). Defaults to today."""
+    from datetime import datetime as dt
+    if date:
+        try:
+            target_date = dt.strptime(date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+    else:
+        target_date = None
+    logs = get_daily_logs(db, current_user.username, date=target_date)
     calories_intake = 0
     calories_burned = 0
     protein = 0
@@ -156,12 +161,9 @@ def today_summary(username: str, db: Session = Depends(get_db)):
 
 
 @app.get("/weight_entries")
-def list_weight_entries(username: str, db: Session = Depends(get_db)):
+def list_weight_entries(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     """Fetch weight entries for the user, most recent first."""
-    user = get_user_by_username(db, username)
-    if user is None:
-        raise HTTPException(status_code=401, detail="User not found. Please sign in.")
-    entries = get_weight_entries(db, user.username)
+    entries = get_weight_entries(db, current_user.username)
     return [
         {"value_kg": e.value_kg, "recorded_at": e.recorded_at.isoformat() if e.recorded_at else None}
         for e in entries
@@ -169,32 +171,36 @@ def list_weight_entries(username: str, db: Session = Depends(get_db)):
 
 
 class WeightEntryInput(BaseModel):
-    username: str
     value_kg: float
+    recorded_at: str | None = None  # optional ISO date "YYYY-MM-DD" or datetime; defaults to now
 
 
 @app.post("/weight_entry")
-def add_weight_entry(data: WeightEntryInput, db: Session = Depends(get_db)):
-    """Add a weight entry for the user."""
-    user = get_user_by_username(db, data.username)
-    if user is None:
-        raise HTTPException(status_code=401, detail="User not found. Please sign in.")
-    entry = create_weight_entry(db, user.username, data.value_kg)
+def add_weight_entry(data: WeightEntryInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """Add a weight entry for the user. recorded_at optional (YYYY-MM-DD or full ISO); default now."""
+    from datetime import datetime as dt
+    recorded_at = None
+    if data.recorded_at:
+        try:
+            if "T" in data.recorded_at:
+                recorded_at = dt.fromisoformat(data.recorded_at.replace("Z", "+00:00"))
+            else:
+                recorded_at = dt.strptime(data.recorded_at, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid recorded_at. Use YYYY-MM-DD.")
+    entry = create_weight_entry(db, current_user.username, data.value_kg, recorded_at=recorded_at)
     return {"value_kg": entry.value_kg, "recorded_at": entry.recorded_at.isoformat() if entry.recorded_at else None}
 
 
 @app.post("/log_input")
-def analyze_food(data: ActivityInput, db: Session = Depends(get_db)):
-    user = get_user_by_username(db, data.username)
-    if user is None:
-        raise HTTPException(status_code=401, detail="User not found. Please sign in.")
+def analyze_food(data: ActivityInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     user_config = {
-        "username": user.username,
+        "username": current_user.username,
         "age": 30,
-        "weight": user.weight_kg,
-        "gender": user.gender,
-        "height": user.height_cm,
-        "activity_level": user.activity_level,
+        "weight": current_user.weight_kg,
+        "gender": current_user.gender,
+        "height": current_user.height_cm,
+        "activity_level": current_user.activity_level,
     }
     system_prompt = f"""
 You are a structured health data extraction and estimation engine.
@@ -274,7 +280,7 @@ Rules:
         # ---- save to database ----
     create_health_log(
         session=db,
-        user_id=user_config["username"],
+        user_id=current_user.username,
         raw_text=data.sentence,
         activities=parsed.activities,
         foods=parsed.foods

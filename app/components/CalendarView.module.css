@@ -177,16 +177,55 @@
   color: #111827;
 }
 
-.status_ok {
-  background: #dcfce7;
-}
-
-.status_low {
+.dayCell:hover {
   background: #e5e7eb;
 }
 
-.status_high {
-  background: #fee2e2;
+.dayCellSelected {
+  background: #111827;
+  color: #ffffff;
+}
+
+.dayCellSelected:hover {
+  background: #374151;
+}
+
+.dayCellToday {
+  border: 2px solid #2563eb;
+  background: #dbeafe !important;
+  color: #1e40af;
+  font-weight: 600;
+}
+
+.dayCellToday:hover {
+  background: #bfdbfe !important;
+}
+
+.dayCellSelected.dayCellToday {
+  background: #1e40af !important;
+  color: #ffffff;
+  border-color: #1e40af;
+}
+
+.dayCellEmpty {
+  width: 38px;
+  height: 38px;
+  margin: 0 auto;
+  background: transparent;
+  border: none;
+  pointer-events: none;
+}
+
+.selectedDateLabel {
+  font-size: 0.9rem;
+  color: #374151;
+  margin: 0.75rem 0 0.5rem 0;
+}
+
+.entryMeta {
+  font-size: 0.9rem;
+  color: #6b7280;
+  margin: 0.5rem 0 0;
 }
 
 .statsRow {

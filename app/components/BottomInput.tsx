@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useAuth } from "../context/AuthContext";
 import styles from "./BottomInput.module.css";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
@@ -15,11 +16,11 @@ export type SummaryData = {
 };
 
 type Props = {
-  username: string;
   onCaloriesCalculated: (data: SummaryData) => void;
 };
 
-export default function BottomInput({ username, onCaloriesCalculated }: Props) {
+export default function BottomInput({ onCaloriesCalculated }: Props) {
+  const { getAuthHeaders, signOut } = useAuth();
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -32,10 +33,15 @@ export default function BottomInput({ username, onCaloriesCalculated }: Props) {
     try {
       const response = await fetch(`${API_BASE}/log_input`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sentence: userText, username }),
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ sentence: userText }),
       });
       const data = await response.json();
+      if (response.status === 401) {
+        signOut();
+        setErrorMessage("Session expired. Please sign in again.");
+        return;
+      }
       if (!response.ok) {
         setErrorMessage(data.detail || "Request failed");
         return;

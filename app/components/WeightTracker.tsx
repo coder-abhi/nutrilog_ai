@@ -10,14 +10,27 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 type WeightEntry = { value_kg: number; recorded_at: string | null };
 
 export default function WeightTracker() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, getAuthHeaders } = useAuth();
   const [entries, setEntries] = useState<WeightEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [logWeightValue, setLogWeightValue] = useState("");
+  const [logWeightDate, setLogWeightDate] = useState(() => {
+    const d = new Date();
+    return d.toISOString().slice(0, 10);
+  });
+  const [logWeightSubmitting, setLogWeightSubmitting] = useState(false);
+  const [logWeightError, setLogWeightError] = useState<string | null>(null);
 
   const fetchWeights = useCallback(async () => {
     if (!user?.username) return;
     try {
-      const res = await fetch(`${API_BASE}/weight_entries?username=${encodeURIComponent(user.username)}`);
+      const res = await fetch(`${API_BASE}/weight_entries`, {
+        headers: { ...getAuthHeaders() },
+      });
+      if (res.status === 401) {
+        signOut();
+        return;
+      }
       if (!res.ok) return;
       const data = await res.json();
       setEntries(Array.isArray(data) ? data : []);
@@ -26,7 +39,7 @@ export default function WeightTracker() {
     } finally {
       setLoading(false);
     }
-  }, [user?.username]);
+  }, [user?.username, getAuthHeaders, signOut]);
 
   useEffect(() => {
     fetchWeights();
@@ -62,6 +75,39 @@ export default function WeightTracker() {
       return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
     } catch {
       return iso;
+    }
+  };
+
+  const handleLogWeight = async () => {
+    const v = parseFloat(logWeightValue);
+    if (Number.isNaN(v) || v <= 0) {
+      setLogWeightError("Enter a valid weight (kg).");
+      return;
+    }
+    setLogWeightError(null);
+    setLogWeightSubmitting(true);
+    try {
+      const res = await fetch(`${API_BASE}/weight_entry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ value_kg: v, recorded_at: logWeightDate || undefined }),
+      });
+      const data = await res.json();
+      if (res.status === 401) {
+        signOut();
+        return;
+      }
+      if (!res.ok) {
+        setLogWeightError(data.detail || "Failed to log weight.");
+        return;
+      }
+      setLogWeightValue("");
+      setLogWeightDate(new Date().toISOString().slice(0, 10));
+      fetchWeights();
+    } catch {
+      setLogWeightError("Network error.");
+    } finally {
+      setLogWeightSubmitting(false);
     }
   };
 
@@ -108,6 +154,42 @@ export default function WeightTracker() {
           </div>
         </section>
 
+        <section className={styles.logWeightSection}>
+          <h2 className={styles.sectionTitle}>Log weight</h2>
+          <div className={styles.logWeightRow}>
+            <label className={styles.logWeightLabel}>
+              Weight (kg)
+              <input
+                type="number"
+                step="0.1"
+                min="1"
+                placeholder="e.g. 70"
+                className={styles.logWeightInput}
+                value={logWeightValue}
+                onChange={(e) => setLogWeightValue(e.target.value)}
+              />
+            </label>
+            <label className={styles.logWeightLabel}>
+              Date
+              <input
+                type="date"
+                className={styles.logWeightInput}
+                value={logWeightDate}
+                onChange={(e) => setLogWeightDate(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className={styles.logWeightBtn}
+              onClick={handleLogWeight}
+              disabled={logWeightSubmitting}
+            >
+              {logWeightSubmitting ? "…" : "Log weight"}
+            </button>
+          </div>
+          {logWeightError && <p className={styles.logWeightError}>{logWeightError}</p>}
+        </section>
+
         <section className={styles.chartSection}>
           <header className={styles.chartHeader}>
             <h2 className={styles.sectionTitle}>Weight Tracker</h2>
@@ -152,7 +234,7 @@ export default function WeightTracker() {
           ) : (
             <ul className={styles.entriesList}>
               {entries.map((entry, i) => (
-                <li key={entry.recorded_at ?? i} className={styles.entryRow}>
+                <li key={`${entry.recorded_at ?? "na"}-${i}`} className={styles.entryRow}>
                   <div className={styles.entryWeight}>{entry.value_kg.toFixed(1)} kg</div>
                   <div className={styles.entryMeta}>{formatDate(entry.recorded_at)}</div>
                 </li>
