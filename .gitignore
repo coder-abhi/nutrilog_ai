@@ -39,3 +39,58 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# =========================
+# Monorepo Root .gitignore
+# Structure:
+# /frontend  (Next.js)
+# /backend   (FastAPI)
+# =========================
+
+# -------------------------
+# Frontend (Next.js)
+# -------------------------
+frontend/node_modules
+frontend/.next/
+frontend/out/
+frontend/build
+frontend/coverage
+frontend/.vercel
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
+
+# Frontend logs
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.pnpm-debug.log*
+
+# -------------------------
+# Backend (FastAPI / Python)
+# -------------------------
+backend/__pycache__/
+backend/*.py[cod]
+backend/*.sqlite3
+backend/*.db
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+backend/.coverage
+backend/htmlcov/
+
+# Virtual environments
+backend/venv/
+backend/.venv/
+
+# -------------------------
+# Environment files (Both)
+# -------------------------
+.env*
+frontend/.env*
+backend/.env*
+
+# -------------------------
+# OS / Misc
+# -------------------------
+.DS_Store
+*.pem
