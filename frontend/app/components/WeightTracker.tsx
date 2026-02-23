@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useAuth } from "../context/AuthContext";
 import styles from "./WeightTracker.module.css";
+import Header from "./Header";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
@@ -113,24 +114,7 @@ export default function WeightTracker() {
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <div className={styles.brand}>Daily Log</div>
-        <nav className={styles.nav}>
-          <Link href="/" className={styles.navLink}>
-            Dashboard
-          </Link>
-          <Link href="/weight-tracker" className={styles.navLinkActive}>
-            Weight
-          </Link>
-          <Link href="/calendar" className={styles.navLink}>
-            Calendar
-          </Link>
-          <span className={styles.userName}>{user?.username}</span>
-          <button type="button" onClick={signOut} className={styles.signOut}>
-            Sign out
-          </button>
-        </nav>
-      </header>
+      <Header />
 
       <main className={styles.main}>
         <section className={styles.hero}>

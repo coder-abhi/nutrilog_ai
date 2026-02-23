@@ -32,6 +32,7 @@
 }
 
 .navLink,
+.userName,
 .navLinkActive {
   padding: 0.4rem 0.9rem;
   border-radius: 999px;
@@ -40,7 +41,8 @@
   color: #111827;
 }
 
-.navLink {
+.navLink,
+.userName {
   background: transparent;
 }
 
@@ -50,9 +52,8 @@
 }
 
 .userName {
-  font-size: 0.85rem;
-  color: #4b5563;
-  margin-left: 0.5rem;
+  background: #0000006e;
+  color: #ffffff;
 }
 
 .signOut {

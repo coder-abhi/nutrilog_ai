@@ -6,6 +6,7 @@ import AuthGate from "./components/AuthGate";
 import BottomInput from "./components/BottomInput";
 import styles from "./page.module.css";
 import { useAuth } from "./context/AuthContext";
+import Header from "./components/Header";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
@@ -87,25 +88,7 @@ function DashboardContent() {
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <div className={styles.brand}>Daily Log</div>
-        <nav className={styles.nav}>
-          <Link href="/" className={styles.navLinkActive}>
-            Dashboard
-          </Link>
-          <Link href="/weight-tracker" className={styles.navLink}>
-            Weight
-          </Link>
-          <Link href="/calendar" className={styles.navLink}>
-            Calendar
-          </Link>
-          <span className={styles.userName}>{user?.username}</span>
-          <button type="button" onClick={signOut} className={styles.signOut}>
-            Sign out
-          </button>
-        </nav>
-      </header>
-
+      <Header />
       <main className={styles.main}>
         <section className={styles.hero}>
           <h1 className={styles.heroTitle}>Simple &amp; Easy Calorie Tracking</h1>

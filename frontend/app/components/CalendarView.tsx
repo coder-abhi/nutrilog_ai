@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useAuth } from "../context/AuthContext";
 import styles from "./CalendarView.module.css";
+import Header from "./Header";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 const DAYS_HEADER = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -90,24 +91,7 @@ export default function CalendarView() {
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <div className={styles.brand}>Daily Log</div>
-        <nav className={styles.nav}>
-          <Link href="/" className={styles.navLink}>
-            Dashboard
-          </Link>
-          <Link href="/weight-tracker" className={styles.navLink}>
-            Weight
-          </Link>
-          <Link href="/calendar" className={styles.navLinkActive}>
-            Calendar
-          </Link>
-          <span className={styles.userName}>{user?.username}</span>
-          <button type="button" onClick={signOut} className={styles.signOut}>
-            Sign out
-          </button>
-        </nav>
-      </header>
+      <Header />
 
       <main className={styles.main}>
         <section className={styles.hero}>
