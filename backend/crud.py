@@ -21,7 +21,8 @@ def verify_password(password: str, stored_hash: str) -> bool:
     return _hash_password(password) == stored_hash
 
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+# DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL_LOCAL")
 
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL environment variable is not set")
@@ -231,9 +232,13 @@ def get_weight_entries(session, user_id: str, limit: int = 100):
 
 # engine = create_engine("sqlite:///./local.db", connect_args={"check_same_thread": False})
 
+# engine = create_engine(
+#     DATABASE_URL,
+#     connect_args={"sslmode": "require"}
+# )
 engine = create_engine(
-    DATABASE_URL,
-    connect_args={"sslmode": "require"}
+    "sqlite:///./local.db",
+    connect_args={"check_same_thread": False}
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base.metadata.create_all(engine)
