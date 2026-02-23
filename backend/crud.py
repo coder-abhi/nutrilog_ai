@@ -4,6 +4,10 @@ from sqlalchemy.orm import relationship, declarative_base, sessionmaker
 import uuid
 import hashlib
 import os
+from dotenv import load_dotenv
+
+
+load_dotenv(override=True)
 
 
 Base = declarative_base()
@@ -226,7 +230,11 @@ def get_weight_entries(session, user_id: str, limit: int = 100):
 
 
 # engine = create_engine("sqlite:///./local.db", connect_args={"check_same_thread": False})
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"sslmode": "require"}
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base.metadata.create_all(engine)
 
