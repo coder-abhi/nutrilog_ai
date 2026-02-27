@@ -7,7 +7,7 @@ import BottomInput from "./components/BottomInput";
 import styles from "./page.module.css";
 import { useAuth } from "./context/AuthContext";
 import Header from "./components/Header";
-
+import DivergingBar from "./components/DivergingBar";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 type FoodEntry = {
@@ -173,6 +173,7 @@ function DashboardContent() {
             </div>
           </div>
 
+{/* Passsive Calorie Burned Section */}
           <div className={styles.card}>
             <div className={styles.cardLabel}>Calories Burnd Till Now</div>
             <div className={styles.macrosRow}>
@@ -184,11 +185,24 @@ function DashboardContent() {
                 <span>Active Burn</span>
                 <strong>{data.caloriesBurned} kcal</strong>
               </div>
-
             </div>
+          </div>
+
+          <div className={styles.card}>
+          <div className={styles.cardLabel}>Calories Burnd Till Now</div>
+          <div className={styles.macrosRow}>
+
+              <DivergingBar 
+              consumed={data.caloriesIntake} 
+              burned={data.caloriesBurned} 
+              passiveBurn={passiveCalorie}
+              />
 
           </div>
+          </div>
+
         </section>
+
 
         <section className={styles.entriesSection}>
           <h2 className={styles.sectionTitle}>Today&apos;s log</h2>

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import styles from "./AuthForm.module.css";
+import GoalSelection from "./GoalSelection";
+
 
 const ACTIVITY_OPTIONS = [
   { value: "sedentary", label: "Sedentary" },
@@ -31,6 +33,9 @@ export default function AuthForm() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const [step, setStep] = useState<1 | 2>(1);
+  const [selectedGoal, setSelectedGoal] = useState<string | null>(null);
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -48,22 +53,37 @@ export default function AuthForm() {
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (step === 1) {
+      if (!username.trim() || !password) {
+        setError("Enter username and password.");
+        return;
+      }
+      setStep(2);
+      return;
+    }
+
+    if (!selectedGoal) {
+      setError("Please select a goal.");
+      return;
+    }
+
     const w = parseFloat(weightKg);
     const tw = parseFloat(targetWeightKg);
     const h = parseFloat(heightCm);
-    if (!username.trim() || !password) {
-      setError("Enter username and password.");
-      return;
-    }
+
     if (isNaN(w) || w <= 0 || isNaN(h) || h <= 0) {
       setError("Enter valid weight (kg) and height (cm).");
       return;
     }
+
     if (isNaN(tw) || tw <= 0) {
       setError("Enter valid target weight (kg).");
       return;
     }
+
     setSubmitting(true);
+
     const result = await signUp({
       username: username.trim(),
       password,
@@ -72,8 +92,11 @@ export default function AuthForm() {
       height_cm: h,
       gender,
       activity_level: activityLevel,
+      // goal: selectedGoal,
     });
+
     setSubmitting(false);
+
     if (result.success) return;
     setError(result.error || "Sign up failed.");
   };
@@ -92,69 +115,38 @@ export default function AuthForm() {
           onSubmit={isSignUp ? handleSignUp : handleSignIn}
           className={styles.form}
         >
-          <label className={styles.label}>
-            Username
-            <input
-              type="text"
-              className={styles.input}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Username"
-              autoComplete="username"
-            />
-          </label>
-          <label className={styles.label}>
-            Password
-            <input
-              type="password"
-              className={styles.input}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password"
-              autoComplete={isSignUp ? "new-password" : "current-password"}
-            />
-          </label>
-
-          {isSignUp && (
+          {(!isSignUp || step === 1) && (
             <>
               <label className={styles.label}>
-                Current weight (kg)
+                Username
                 <input
-                  type="number"
-                  step="0.1"
-                  min="1"
+                  type="text"
                   className={styles.input}
-                  value={weightKg}
-                  onChange={(e) => setWeightKg(e.target.value)}
-                  placeholder="e.g. 70"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Username"
+                  autoComplete="username"
                 />
               </label>
+
               <label className={styles.label}>
-                Target weight (kg)
+                Password
                 <input
-                  type="number"
-                  step="0.1"
-                  min="1"
+                  type="password"
                   className={styles.input}
-                  value={targetWeightKg}
-                  onChange={(e) => setTargetWeightKg(e.target.value)}
-                  placeholder="e.g. 65"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Password"
+                  autoComplete={isSignUp ? "new-password" : "current-password"}
                 />
               </label>
+            </>
+          )}
+
+          {isSignUp && step === 1 && (
+            <>
               <label className={styles.label}>
-                Height (cm)
-                <input
-                  type="number"
-                  step="0.1"
-                  min="1"
-                  className={styles.input}
-                  value={heightCm}
-                  onChange={(e) => setHeightCm(e.target.value)}
-                  placeholder="e.g. 170"
-                />
-              </label>
-              <label className={styles.label}>
-                Gender
+                Gender 
                 <select
                   className={styles.select}
                   value={gender}
@@ -167,6 +159,7 @@ export default function AuthForm() {
                   ))}
                 </select>
               </label>
+
               <label className={styles.label}>
                 Activity level
                 <select
@@ -184,6 +177,18 @@ export default function AuthForm() {
             </>
           )}
 
+          {isSignUp && step === 2 && (
+            <GoalSelection 
+            onGoalChange={setSelectedGoal} 
+            onWeightChange = {setWeightKg} 
+            onTargetWeightChange = {setTargetWeightKg}
+            onHeightChange = {setHeightCm}
+            currWeight = {weightKg}
+            currTargetWeight = {targetWeightKg}
+            currHeight = {heightCm}
+            />
+          )}
+
           {error && <p className={styles.error}>{error}</p>}
 
           <div className={styles.actions}>
@@ -192,7 +197,13 @@ export default function AuthForm() {
               className={styles.primaryButton}
               disabled={submitting}
             >
-              {submitting ? "..." : isSignUp ? "Sign up" : "Sign in"}
+              {submitting
+                ? "..."
+                : isSignUp
+                  ? step === 1
+                    ? "Next"
+                    : "Complete Sign up"
+                  : "Sign in"}
             </button>
             <button
               type="button"
@@ -200,6 +211,8 @@ export default function AuthForm() {
               onClick={() => {
                 setMode(isSignUp ? "signin" : "signup");
                 setError("");
+                setStep(1);
+                setSelectedGoal(null);
               }}
             >
               {isSignUp ? "Already have an account? Sign in" : "No account? Sign up"}

@@ -17,12 +17,12 @@ const DivergingBar = ({ consumed, burned, passiveBurn }) => {
     }
   
     return (
-      <div className="w-full p-4">
+      <div className="w-full p-4 text-black">
         {/* Numbers on top */}
         <div className="flex justify-between mb-2 text-sm">
-          <span>Consumed: {consumed} kcal</span>
           <span>Burned: {totalBurned} kcal</span>
           <span>Net: {net} kcal</span>
+          <span>Consumed: {consumed} kcal</span>
         </div>
   
         {/* Bar */}
