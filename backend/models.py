@@ -53,18 +53,6 @@ class SignUpInput(BaseModel):
     activity_level: str  # sedentary | low | moderate | high | very_high
 
 
-
-def total_macros(log: HealthLog) -> dict:
-    return {
-        "protein": sum(f.protein for f in log.foods),
-        "carbs": sum(f.carbs for f in log.foods),
-        "fat": sum(f.fat for f in log.foods),
-        "fibre": sum(f.fibre for f in log.foods),
-        "sugar": sum(f.sugar for f in log.foods),
-        "saturated_fat": sum(f.saturated_fat for f in log.foods),
-        "sodium": sum(f.sodium for f in log.foods),
-    }
-
 def total_macros(log: HealthLog) -> dict:
     return {
         "protein": sum(f.protein for f in log.foods),

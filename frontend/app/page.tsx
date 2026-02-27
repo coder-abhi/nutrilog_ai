@@ -35,6 +35,7 @@ function DashboardContent() {
   });
   const [foods, setFoods] = useState<FoodEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [passiveCalorie, setPassiveCalorie] = useState(0)
 
   const fetchTodaySummary = useCallback(async () => {
     if (!user?.username) return;
@@ -64,9 +65,29 @@ function DashboardContent() {
     }
   }, [user?.username, getAuthHeaders, signOut]);
 
+  const fetchPassiveCalorie = useCallback(async () => {
+    if (!user?.username) return;
+    try {
+      const res = await fetch(`${API_BASE}/passive_calorie_burned`, {
+        headers: { ...getAuthHeaders() },
+      });
+      if (res.status === 401) {
+        signOut();
+        return;
+      }
+      if (!res.ok) return;
+      const data = await res.json();
+      setPassiveCalorie(data ?? 0);
+    } catch {
+      // ignore
+    }
+  }, [user?.username, getAuthHeaders, signOut]);
+
+
   useEffect(() => {
     fetchTodaySummary();
-  }, [fetchTodaySummary]);
+    fetchPassiveCalorie();
+  }, [fetchTodaySummary,fetchPassiveCalorie]);
 
   const data = {
     caloriesIntake: summaryData?.calories_intake ?? 0,
@@ -150,6 +171,22 @@ function DashboardContent() {
                 {sugarExceeded && ` (over ${SUGAR_LIMIT} g)`}
               </strong>
             </div>
+          </div>
+
+          <div className={styles.card}>
+            <div className={styles.cardLabel}>Calories Burnd Till Now</div>
+            <div className={styles.macrosRow}>
+              <div className={styles.macroChip}>
+                <span>Resting Flame</span>
+                <strong>{passiveCalorie} kcal</strong>
+              </div>
+              <div className={styles.macroChip}>
+                <span>Active Burn</span>
+                <strong>{data.caloriesBurned} kcal</strong>
+              </div>
+
+            </div>
+
           </div>
         </section>
 

@@ -22,7 +22,7 @@ from auth import create_access_token, get_current_user
 
 from models import Activity, ActivityInput, ExtractionResponse, SignInInput, SignUpInput
 from utils import aggregate_summary
-from met_engine import calculate_calories_burned
+from met_engine import calculate_calories_burned, calculate_realtime_burn
 
 load_dotenv(override=True)
 
@@ -96,6 +96,20 @@ def signin(data: SignInInput, db: Session = Depends(get_db)):
             "activity_level": user.activity_level,
         },
     }
+@app.get("/passive_calorie_burned")
+def passive_calorie_burned(current_user=Depends(get_current_user)):
+    """
+    Returns passive calories burned from 12:00 AM till now.
+    """
+    total_burned = calculate_realtime_burn(
+        weight_kg=current_user.weight_kg,
+        height_cm=current_user.height_cm,
+        gender=current_user.gender,
+        activity_level=current_user.activity_level,
+        age=25
+    )
+
+    return int(total_burned)
 
 
 @app.get("/today_summary")
@@ -160,6 +174,7 @@ def today_summary(date: str | None = None, db: Session = Depends(get_db), curren
     }
 
 
+
 @app.get("/weight_entries")
 def list_weight_entries(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     """Fetch weight entries for the user, most recent first."""
@@ -168,6 +183,8 @@ def list_weight_entries(db: Session = Depends(get_db), current_user=Depends(get_
         {"value_kg": e.value_kg, "recorded_at": e.recorded_at.isoformat() if e.recorded_at else None}
         for e in entries
     ]
+
+
 
 
 class WeightEntryInput(BaseModel):
@@ -196,7 +213,7 @@ def add_weight_entry(data: WeightEntryInput, db: Session = Depends(get_db), curr
 def analyze_food(data: ActivityInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     user_config = {
         "username": current_user.username,
-        "age": 30,
+        "age": 25,
         "weight": current_user.weight_kg,
         "gender": current_user.gender,
         "height": current_user.height_cm,
