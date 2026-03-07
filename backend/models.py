@@ -51,6 +51,7 @@ class SignUpInput(BaseModel):
     height_cm: float
     gender: str  # male | female | other
     activity_level: str  # sedentary | low | moderate | high | very_high
+    goal:str
 
 
 def total_macros(log: HealthLog) -> dict:

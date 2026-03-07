@@ -1,11 +1,12 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, create_engine, engine, text
+from tkinter import N
+from sqlalchemy import Column, Integer, Nullable, String, Float, DateTime, ForeignKey, create_engine, engine, text
 from sqlalchemy.orm import relationship, declarative_base, sessionmaker
 import uuid
 import hashlib
 import os
 from dotenv import load_dotenv
-
+from models import SignUpInput
 
 load_dotenv(override=True)
 
@@ -45,6 +46,7 @@ class UserDB(Base):
     gender = Column(String, nullable=False)  # male | female | other
     activity_level = Column(String, nullable=False)  # sedentary | low | moderate | high | very_high
     created_at = Column(DateTime, default=datetime.utcnow)
+    goal=Column[str](String,nullable=True)
 
 
 class WeightEntryDB(Base):
@@ -111,18 +113,19 @@ class FoodDB(Base):
 # -----------------------------
 
 
-def create_user(session, username: str, password: str, weight_kg: float, target_weight_kg: float | None, height_cm: float, gender: str, activity_level: str):
+def create_user(session,dataObj:SignUpInput):
     """Create a new user. Raises if username exists."""
-    if get_user_by_username(session, username) is not None:
+    if get_user_by_username(session, dataObj.username) is not None:
         raise ValueError("Username already exists")
     user = UserDB(
-        username=username,
-        password_hash=_hash_password(password),
-        weight_kg=weight_kg,
-        target_weight_kg=target_weight_kg,
-        height_cm=height_cm,
-        gender=gender,
-        activity_level=activity_level,
+        username=dataObj.username,
+        password_hash=_hash_password(dataObj.password),
+        weight_kg=dataObj.weight_kg,
+        target_weight_kg=dataObj.target_weight_kg,
+        height_cm=dataObj.height_cm,
+        gender=dataObj.gender,
+        activity_level=dataObj.activity_level,
+        goal=dataObj.goal
     )
     session.add(user)
     session.commit()

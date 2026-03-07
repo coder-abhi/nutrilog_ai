@@ -51,13 +51,7 @@ def signup(data: SignUpInput, db: Session = Depends(get_db)):
     try:
         user = create_user(
             session=db,
-            username=data.username,
-            password=data.password,
-            weight_kg=data.weight_kg,
-            target_weight_kg=data.target_weight_kg,
-            height_cm=data.height_cm,
-            gender=data.gender,
-            activity_level=data.activity_level,
+            dataObj=data
         )
         access_token = create_access_token(data={"sub": user.username})
         return {

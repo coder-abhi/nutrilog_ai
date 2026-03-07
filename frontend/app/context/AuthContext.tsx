@@ -11,6 +11,11 @@ export type User = {
   height_cm: number;
   gender: string;
   activity_level: string;
+  goal:string;
+};
+
+type SignUpPayload = User & {
+  password: string;
 };
 
 type StoredAuth = { user: User; token: string };
@@ -20,15 +25,7 @@ type AuthContextType = {
   token: string | null;
   loading: boolean;
   signIn: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  signUp: (data: {
-    username: string;
-    password: string;
-    weight_kg: number;
-    target_weight_kg: number;
-    height_cm: number;
-    gender: string;
-    activity_level: string;
-  }) => Promise<{ success: boolean; error?: string }>;
+  signUp: (data: SignUpPayload) => Promise<{ success: boolean; error?: string }>;
   signOut: () => void;
   getAuthHeaders: () => Record<string, string>;
 };
@@ -88,15 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [persistAuth]);
 
   const signUp = useCallback(
-    async (data: {
-      username: string;
-      password: string;
-      weight_kg: number;
-      target_weight_kg: number;
-      height_cm: number;
-      gender: string;
-      activity_level: string;
-    }) => {
+    async (data: SignUpPayload) => {
       try {
         const res = await fetch(`${API_BASE}/signup`, {
           method: "POST",

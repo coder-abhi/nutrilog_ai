@@ -92,7 +92,7 @@ export default function AuthForm() {
       height_cm: h,
       gender,
       activity_level: activityLevel,
-      // goal: selectedGoal,
+      goal: selectedGoal,
     });
 
     setSubmitting(false);
