@@ -115,7 +115,7 @@ def extract_reps(text: str):
 
 # 🧠 Split into segments (and, comma, period)
 def split_segments(text: str):
-    parts = re.split(r'\band\b|,|\.', text.lower())
+    parts = re.split(r'\b(?:and|also|then|plus|n)\b|[,&.]', text.lower())
     return [p.strip() for p in parts if p.strip()]
 
 
