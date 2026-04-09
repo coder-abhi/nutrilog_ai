@@ -32,6 +32,30 @@ TIME_WORDS = {
     "few minutes": 5
 }
 
+SPEED_MAP = {
+    "walking": 5,
+    "race walking": 7,
+    "jogging": 8,
+    "jogging 2.6-3.7 mph": 5.5,
+    "running": 10,
+    "running 4.3-4.8 mph": 7.5,
+    "running uphill": 8,
+    "running downhill": 12,
+    "running/jogging": 9,
+    "shuttle running": 10,
+    "hiking": 4.5,
+    "walking treadmill": 5,
+    "e-bike": 20,
+    "rowing": 6,
+    "canoeing": 6,
+    "swimming": 2,
+    "swimming breaststroke": 2.5,
+    "swimming laps": 3,
+    "water walking": 3,
+    "water jogging": 4,
+    "water running": 4
+}
+
 def lemmatize_text(text: str):
     words = text.lower().split()
 
@@ -160,26 +184,33 @@ def parse_input(text: str,raw_input = False):
         # r_activity, r_score, r_met_value = detect_activity(seg)
         duration = extract_duration(seg)
         distance = extract_distance(seg)
-        reps = extract_reps(seg)
+
+        if(distance != None and activity in SPEED_MAP):
+            duration = round((distance / SPEED_MAP[activity])*60,2)
+        # duration = distance / 5
+        # reps = extract_reps(seg)
+
+
 
         # Decision Engine
-        if activity and (duration or distance or reps) and score > 0.50:
+        if activity and (duration or distance) and score > 0.50:
             results.update({
                 "segment": seg,
                 "activity": activity,
                 "score":score,
                 "duration_min": duration,
-                "distance_km": distance,
-                "reps": reps,
+                # "distance_km": distance,
+                # "reps": reps,
                 "met_value": met_value,
                 "source": "local"
             })
         else:
             results.update(llm_fallback(seg))
 
-    return {
-        "segments": results
-    }
+
+
+
+    return results
 
 
 # # 🧪 Example
@@ -190,7 +221,7 @@ def parse_input(text: str,raw_input = False):
 #             exit()
 #         result = parse_input(user_input)
 
-#         print(json.dumps(result, indent=2))
+#         print(result)
 
 
 
