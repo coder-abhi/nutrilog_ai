@@ -137,7 +137,10 @@ def extract_reps(text: str):
 
 # 🧠 Split into segments (and, comma, period)
 def split_segments(text: str):
-    parts = re.split(r'\b(?:and|also|then|plus|n)\b|[,&.]', text.lower())
+    parts = re.split(
+    r'\b(?:and|then|after that|after|later|also|plus|n)\b|[,&.]',
+    text.lower()
+)
     return [p.strip() for p in parts if p.strip()]
 
 
@@ -172,10 +175,21 @@ def detect_activity(text: str):
 # 🧠 Main pipeline function (segment + decision engine)
 def parse_input(text: str,raw_input = False):
     segments = split_segments(text)
-
-    results = {}
+    print("Segments : ",segments)
+    results = {
+        "local": [],
+        "llm": []
+    }
+        
 
     for seg in segments:
+
+        # clearing fields before use
+        # activity = None
+        # score = 0
+        # duration = None
+        # distance = None
+        # met_value = None
         
         clean_seg = lemmatize_text(seg)
         # print("Clean seg")
@@ -192,20 +206,25 @@ def parse_input(text: str,raw_input = False):
 
 
 
+
         # Decision Engine
         if activity and (duration or distance) and score > 0.50:
-            results.update({
+            results["local"].append({
                 "segment": seg,
                 "activity": activity,
-                "score":score,
+                "score":float(score),
                 "duration_min": duration,
                 # "distance_km": distance,
                 # "reps": reps,
-                "met_value": met_value,
+                "met_value": float(met_value),
                 "source": "local"
             })
+
         else:
-            results.update(llm_fallback(seg))
+            results["llm"].append(llm_fallback(seg))
+
+        # print("-"*50)
+        # print("For Sentence : ",clean_seg,"\n",results)
 
 
 
@@ -215,13 +234,19 @@ def parse_input(text: str,raw_input = False):
 
 # # 🧪 Example
 # if __name__ == "__main__":
-#     while(True):
-#         user_input = input("Log Activity : ")
-#         if user_input.lower() == "stop":
-#             exit()
+#     running = True
+#     while(running):
+#         # user_input = input("Log Activity : ")
+#         # if user_input.lower() == "stop":
+#         #     exit()
+#         user_input = "i walk 1km then i ran for 10km after that i had breakfast of poha"
 #         result = parse_input(user_input)
 
-#         print(result)
+#         print("\n" + "+---"*20 + "+")
+
+#         print(json.dumps(result,indent=2))
+#         running = False
+
 
 
 
@@ -229,4 +254,6 @@ def parse_input(text: str,raw_input = False):
 played soccer for 1 hour
 played soccer for hour
 played football for 1 hour
+
+i walk 1km then i ran for 10km after that i had breakfast of poha
 '''

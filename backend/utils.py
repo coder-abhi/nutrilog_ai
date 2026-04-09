@@ -11,3 +11,11 @@ def aggregate_summary(activities: List[Activity], foods: List[Food]) -> dict:
         "fibre": sum(f.fibre for f in foods),
         "sugar": sum(f.sugar for f in foods),
     }
+
+def merge_dict(result,dict1,dict2):
+    for d in [dict1, dict2]:
+        for key, value in d.items():
+            if key in result:
+                result[key].extend(value)
+            else:
+                result[key] = value.copy()
