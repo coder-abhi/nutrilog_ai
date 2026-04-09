@@ -5,6 +5,16 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
 import json
+import logging  # for printing time taken by every query
+
+
+
+# Configure logging to write to 'app.log'
+logging.basicConfig(
+    filename='nutrilog_info.log', 
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 from crud import (
     create_health_log,
@@ -45,6 +55,18 @@ def calculate(data: ActivityInput, db: Session = Depends(get_db)):
 
 from typing import List
 # from pydantic import BaseModel
+
+@app.middleware("http")
+async def log_time(request, call_next):
+    import time
+    start = time.time()
+
+    response = await call_next(request)
+
+    duration = time.time() - start
+    logging.info(f"{request.url.path} took {duration:.4f}s")
+
+    return response
 
 @app.post("/signup")
 def signup(data: SignUpInput, db: Session = Depends(get_db)):
