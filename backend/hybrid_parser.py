@@ -13,7 +13,7 @@ lemmatizer = WordNetLemmatizer()
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Canonical activities
-df = pd.read_csv("backend/activity_with_met_2.csv")
+df = pd.read_csv("activity_with_met_2.csv")
 MET_LOOKUP = dict(zip(df["activity_name"], df["MET"]))
 
 ACTIVITIES = df["activity_name"].to_list()
@@ -173,7 +173,7 @@ def detect_activity(text: str):
 
 
 # 🧠 Main pipeline function (segment + decision engine)
-def parse_input(text: str,raw_input = False):
+def parse_input(text: str,weight_kg,raw_input = False):
     segments = split_segments(text)
     print("Segments : ",segments)
     results = {
@@ -199,24 +199,26 @@ def parse_input(text: str,raw_input = False):
         duration = extract_duration(seg)
         distance = extract_distance(seg)
 
+        unit = "minutes" if duration else "km"
+
         if(distance != None and activity in SPEED_MAP):
             duration = round((distance / SPEED_MAP[activity])*60,2)
         # duration = distance / 5
         # reps = extract_reps(seg)
-
-
+        # print("Duration",duration,"\t MET : ",met_value)
 
 
         # Decision Engine
         if activity and (duration or distance) and score > 0.50:
+            calories_burned = met_value * weight_kg * (duration / 60)
             results["local"].append({
                 "segment": seg,
                 "activity": activity,
                 "score":float(score),
-                "duration_min": duration,
-                # "distance_km": distance,
+                "quantity": duration if duration else distance,
+                "unit": unit,
                 # "reps": reps,
-                "met_value": float(met_value),
+                "calories_burned": round(float(calories_burned)),
                 "source": "local"
             })
 

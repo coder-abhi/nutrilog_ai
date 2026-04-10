@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import json
 import logging  # for printing time taken by every query
 
-
+from hybrid_parser import parse_input
 
 # Configure logging to write to 'app.log'
 logging.basicConfig(
@@ -290,25 +290,58 @@ Rules:
 - Do not invent unrealistic quantities.
 
 """
+    
+    parser_result = parse_input(data.sentence,float(user_config['weight']))
 
-    response = client.chat.completions.create(
-        model="gpt-5-mini",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": data.sentence}
-        ],
+    llm_required_segs = [item["segment"] for item in parser_result["llm"]]
+    user_promt = " and ".join(llm_required_segs) if llm_required_segs else None
+
+    # llm_required_seg = " and ".join([item["segment"] for item in parser_result["llm"]])
+
+    if(user_promt):
+        response = client.chat.completions.create(
+            model="gpt-5-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_promt}
+            ],
+        )
+
+        print("-"*20,"User Promt","-"*20)
+        print(user_promt)
+
+        llm_return = json.loads(response.choices[0].message.content)
+        parsed = ExtractionResponse(**llm_return)
+    
+    else: 
+        # No LLM needed → create empty structure
+        parsed = ExtractionResponse(
+            activities=[],
+            foods=[]
+        )
+
+    # parsed.activities.extend(parser_result["local"])
+    parsed.activities.extend([
+    Activity(
+        type=item["activity"],
+        quantity=item["quantity"],
+        unit=item["unit"],
+        calories_burned=item["calories_burned"]
     )
-
-    llm_return = json.loads(response.choices[0].message.content)
-    parsed = ExtractionResponse(**llm_return)
+    for item in parser_result["local"]
+])
+    # print(json.dumps(parsed,indent=2))
+    print("-"*20,"PARSED Data","-"*20)
+    print(parsed)
     summary = aggregate_summary(parsed.activities, parsed.foods)
-    tmp_calori_burned = 0
-    for activity in parsed.activities:
-        tmp_calori_burned += calculate_calories_burned(activity.type, activity.quantity, activity.unit, user_config["weight"])
+    # tmp_calori_burned = 0
+    # for activity in parsed.activities:
+    #     tmp_calori_burned += calculate_calories_burned(activity.type, activity.quantity, activity.unit, user_config["weight"])
 
-    print("Calories Burned by MET :",tmp_calori_burned)
-    if(tmp_calori_burned != 0):
-        summary["calories_burned"] = tmp_calori_burned
+    # tmp_calori_burned = calculate_calories_burned(parser_result,user_config['weight'])
+    # print("Calories Burned by MET :",tmp_calori_burned)
+    # if(tmp_calori_burned != 0):
+    #     summary["calories_burned"] = tmp_calori_burned
 
         # ---- save to database ----
     create_health_log(
