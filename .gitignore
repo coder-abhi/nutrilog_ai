@@ -93,4 +93,4 @@ backend/.env*
 # OS / Misc
 # -------------------------
 .DS_Store
-*.pem
+*.pem*.db
