@@ -63,3 +63,5 @@
 2026-04-10 09:13:33,441 - INFO - /today_summary took 0.0024s
 2026-04-10 09:14:45,964 - INFO - /log_input took 0.3053s
 2026-04-10 09:14:45,981 - INFO - /today_summary took 0.0022s
+2026-04-13 07:45:06,783 - INFO - /docs took 0.0128s
+2026-04-13 07:45:07,642 - INFO - /openapi.json took 0.1203s

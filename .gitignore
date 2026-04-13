@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/backend/junk_practice
 
 # next.js
 /.next/
