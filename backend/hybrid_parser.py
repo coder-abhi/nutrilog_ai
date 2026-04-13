@@ -3,12 +3,13 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import re
 import json
-from nltk.stem import WordNetLemmatizer
+import spacy
+
+
 import pandas as pd
 
 
-
-lemmatizer = WordNetLemmatizer()
+nlp = spacy.load("en_core_web_sm")
 # Load local embedding model
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
@@ -56,16 +57,19 @@ SPEED_MAP = {
     "water running": 4
 }
 
-def lemmatize_text(text: str):
-    words = text.lower().split()
+# def lemmatize_text(text: str):
+#     words = text.lower().split()
 
-    lemmatized_words = []
-    for word in words:
-        lemma = lemmatizer.lemmatize(word, pos='v')  # 'v' = verb
-        lemmatized_words.append(lemma)
+#     lemmatized_words = []
+#     for word in words:
+#         lemma = lemmatizer.lemmatize(word, pos='v')  # 'v' = verb
+#         lemmatized_words.append(lemma)
 
-    return " ".join(lemmatized_words)
-    # return text
+#     return " ".join(lemmatized_words)
+#     # return text
+def lemmatize_text_spa(text: str):
+    doc = nlp(text.lower())
+    return " ".join([token.lemma_ for token in doc])
 
 
 # 🧠 Extract duration
