@@ -21,8 +21,8 @@ def verify_password(password: str, stored_hash: str) -> bool:
     return _hash_password(password) == stored_hash
 
 
-# DATABASE_URL = os.getenv("DATABASE_URL")
-DATABASE_URL = os.getenv("DATABASE_URL_LOCAL")
+DATABASE_URL = os.getenv("DATABASE_URL")
+# DATABASE_URL = os.getenv("DATABASE_URL_LOCAL")
 
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL environment variable is not set")
