@@ -1,5 +1,4 @@
 from datetime import datetime
-from tkinter import N
 from sqlalchemy import Column, Integer, Nullable, String, Float, DateTime, ForeignKey, create_engine, engine, text
 from sqlalchemy.orm import relationship, declarative_base, sessionmaker
 import uuid

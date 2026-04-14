@@ -8,6 +8,15 @@ import json
 import logging  # for printing time taken by every query
 
 from hybrid_parser import parse_input
+from fastapi import Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from auth import create_access_token, get_current_user
+
+from models import Activity, ActivityInput, ExtractionResponse, SignInInput, SignUpInput
+from utils import aggregate_summary
+from met_engine import calculate_calories_burned, calculate_realtime_burn
+
 
 # Configure logging to write to 'app.log'
 logging.basicConfig(
@@ -25,14 +34,7 @@ from crud import (
     get_weight_entries,
     create_weight_entry,
 )
-from fastapi import Depends, HTTPException
-from sqlalchemy.orm import Session
 
-from auth import create_access_token, get_current_user
-
-from models import Activity, ActivityInput, ExtractionResponse, SignInInput, SignUpInput
-from utils import aggregate_summary
-from met_engine import calculate_calories_burned, calculate_realtime_burn
 
 load_dotenv(override=True)
 
