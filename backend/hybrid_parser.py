@@ -3,7 +3,6 @@ from sentence_transformers import SentenceTransformer
 import numpy as np
 import re
 import json
-import spacy
 import pandas as pd
 from openai import OpenAI
 import os
@@ -13,7 +12,7 @@ load_dotenv(override=True)
 api_key = os.getenv('OPENAI_API_KEY')
 client = OpenAI()
 
-nlp = spacy.load("en_core_web_sm")
+# nlp = spacy.load("en_core_web_sm")
 # Load local embedding model
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
@@ -208,7 +207,8 @@ def parse_input(text: str,weight_kg,raw_input = False):
         # distance = None
         # met_value = None
         
-        clean_seg = lemmatize_text_spa(seg)
+        # clean_seg = lemmatize_text_spa(seg)
+        clean_seg = seg
         # print("Clean seg")
         activity, score, met_value = detect_activity(clean_seg if raw_input==True else seg)
         # print("\nRaw Sentence")
