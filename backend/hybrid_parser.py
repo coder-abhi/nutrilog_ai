@@ -250,20 +250,20 @@ def parse_input(text: str,weight_kg,raw_input = False):
     return results
 
 
-# 🧪 Example
-if __name__ == "__main__":
-    running = True
-    while(running):
-        # user_input = input("Log Activity : ")
-        # if user_input.lower() == "stop":
-        #     exit()
-        user_input = "i walk 1km then i ran for 10km after that i had breakfast of poha"
-        result = parse_input(user_input,25)
+# # 🧪 Example
+# if __name__ == "__main__":
+#     running = True
+#     while(running):
+#         # user_input = input("Log Activity : ")
+#         # if user_input.lower() == "stop":
+#         #     exit()
+#         user_input = "i walk 1km then i ran for 10km after that i had breakfast of poha"
+#         result = parse_input(user_input,25)
 
-        print("\n" + "+---"*20 + "+")
+#         print("\n" + "+---"*20 + "+")
 
-        print(json.dumps(result,indent=2))
-        running = False
+#         print(json.dumps(result,indent=2))
+#         running = False
 
 
 
