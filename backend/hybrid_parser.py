@@ -1,24 +1,36 @@
-from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+from sentence_transformers import SentenceTransformer
 import numpy as np
 import re
 import json
 import spacy
 import pandas as pd
+from openai import OpenAI
+import os
+from dotenv import load_dotenv
+load_dotenv(override=True)
 
+api_key = os.getenv('OPENAI_API_KEY')
+client = OpenAI()
 
 nlp = spacy.load("en_core_web_sm")
 # Load local embedding model
+
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Canonical activities
-df = pd.read_csv("activity_with_met_2.csv")
+df = pd.read_csv("backend/ml_models/activity_with_met_2.csv")
 MET_LOOKUP = dict(zip(df["activity_name"], df["MET"]))
 
-ACTIVITIES = df["activity_name"].to_list()
-# Precompute embeddings
-
-activity_embeddings = model.encode(ACTIVITIES)
+activity_embeddings = np.load("backend/ml_models/activity_embeddings.npy")
+ACTIVITIES = np.load("backend/ml_models/activities_list.npy", allow_pickle=True)
+# Precompute embeddings using OpenAI
+def get_embeddings(texts):
+    response = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=texts
+    )
+    return [item.embedding for item in response.data]
 
 
 # 🧠 Duration word mapping
@@ -159,7 +171,10 @@ def llm_fallback(segment: str):
 def detect_activity(text: str):
     # print("Detect activity text : ",text)
     input_embedding = model.encode([text])
-    similarities = cosine_similarity(input_embedding, activity_embeddings)[0]
+    similarities = cosine_similarity(
+        np.array(input_embedding),
+        np.array(activity_embeddings)
+    )[0]
 
     best_idx = np.argmax(similarities)
     best_score = similarities[best_idx]
@@ -193,11 +208,13 @@ def parse_input(text: str,weight_kg,raw_input = False):
         # distance = None
         # met_value = None
         
-        clean_seg = lemmatize_text(seg)
+        clean_seg = lemmatize_text_spa(seg)
         # print("Clean seg")
         activity, score, met_value = detect_activity(clean_seg if raw_input==True else seg)
         # print("\nRaw Sentence")
         # r_activity, r_score, r_met_value = detect_activity(seg)
+
+        print("Activity Score MET : ",activity,score,met_value,seg)
         duration = extract_duration(seg)
         distance = extract_distance(seg)
 
@@ -209,7 +226,7 @@ def parse_input(text: str,weight_kg,raw_input = False):
         # reps = extract_reps(seg)
         # print("Duration",duration,"\t MET : ",met_value)
 
-
+        print("Dist and Duration : ",distance,duration,activity)
         # Decision Engine
         if activity and (duration or distance) and score > 0.50:
             calories_burned = met_value * weight_kg * (duration / 60)
@@ -230,26 +247,23 @@ def parse_input(text: str,weight_kg,raw_input = False):
         # print("-"*50)
         # print("For Sentence : ",clean_seg,"\n",results)
 
-
-
-
     return results
 
 
-# # 🧪 Example
-# if __name__ == "__main__":
-#     running = True
-#     while(running):
-#         # user_input = input("Log Activity : ")
-#         # if user_input.lower() == "stop":
-#         #     exit()
-#         user_input = "i walk 1km then i ran for 10km after that i had breakfast of poha"
-#         result = parse_input(user_input)
+# 🧪 Example
+if __name__ == "__main__":
+    running = True
+    while(running):
+        # user_input = input("Log Activity : ")
+        # if user_input.lower() == "stop":
+        #     exit()
+        user_input = "i walk 1km then i ran for 10km after that i had breakfast of poha"
+        result = parse_input(user_input,25)
 
-#         print("\n" + "+---"*20 + "+")
+        print("\n" + "+---"*20 + "+")
 
-#         print(json.dumps(result,indent=2))
-#         running = False
+        print(json.dumps(result,indent=2))
+        running = False
 
 
 
