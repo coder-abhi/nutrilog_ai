@@ -18,11 +18,11 @@ client = OpenAI()
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Canonical activities
-df = pd.read_csv("backend/ml_models/activity_with_met_2.csv")
+df = pd.read_csv("ml_models/activity_with_met_2.csv")
 MET_LOOKUP = dict(zip(df["activity_name"], df["MET"]))
 
-activity_embeddings = np.load("backend/ml_models/activity_embeddings.npy")
-ACTIVITIES = np.load("backend/ml_models/activities_list.npy", allow_pickle=True)
+activity_embeddings = np.load("ml_models/activity_embeddings.npy")
+ACTIVITIES = np.load("ml_models/activities_list.npy", allow_pickle=True)
 # Precompute embeddings using OpenAI
 def get_embeddings(texts):
     response = client.embeddings.create(

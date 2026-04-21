@@ -40,6 +40,19 @@ load_dotenv(override=True)
 
 api_key = os.getenv('OPENAI_API_KEY')
 client = OpenAI()
+
+import time
+
+def measure_openai_latency(func, *args, **kwargs):
+    start_time = time.time()
+    response = func(*args, **kwargs)
+    end_time = time.time()
+
+    duration = end_time - start_time
+    print(f"⏱️ OpenAI API call took {duration:.4f} seconds")
+    logging.info(f"OpenAI API call took {duration:.4f} seconds")
+
+    return response
 app = FastAPI()
 
 app.add_middleware(
@@ -301,8 +314,9 @@ Rules:
     # llm_required_seg = " and ".join([item["segment"] for item in parser_result["llm"]])
 
     if(user_promt):
-        response = client.chat.completions.create(
-            model="gpt-5-mini",
+        response = measure_openai_latency(
+            client.chat.completions.create,
+            model="gpt-4.1",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_promt}
