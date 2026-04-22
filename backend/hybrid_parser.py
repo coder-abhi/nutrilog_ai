@@ -1,35 +1,67 @@
 from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers import SentenceTransformer
 import numpy as np
 import re
 import json
 import pandas as pd
 from openai import OpenAI
-import os
+import os, psutil
 from dotenv import load_dotenv
+from pathlib import Path
+
+from optimum.onnxruntime import ORTModelForFeatureExtraction
+from transformers import AutoTokenizer
+import torch
 load_dotenv(override=True)
 
 api_key = os.getenv('OPENAI_API_KEY')
 client = OpenAI()
 
+
+
+
+def log_mem(stage):
+    process = psutil.Process(os.getpid())
+    print(f"{stage}: {process.memory_info().rss / 1024**2:.2f} MB")
 # nlp = spacy.load("en_core_web_sm")
 # Load local embedding model
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
+log_mem("Before sentence transformer")
+
+
+def get_onnx_embedding(text, model, tokenizer):
+    inputs = tokenizer(text, padding=True, truncation=True, return_tensors="pt")
+    with torch.no_grad():
+        outputs = model(**inputs)
+    
+    # Mean Pooling logic
+    token_embeddings = outputs.last_hidden_state
+    mask = inputs['attention_mask'].unsqueeze(-1).expand(token_embeddings.size()).float()
+    sentence_embedding = torch.sum(token_embeddings * mask, 1) / torch.clamp(mask.sum(1), min=1e-9)
+    return sentence_embedding.numpy()
 
 # Canonical activities
-df = pd.read_csv("ml_models/activity_with_met_2.csv")
+BASE_DIR = Path(__file__).resolve().parent
+csv_file_path = BASE_DIR / "ml_models" / "activity_with_met_2.csv"
+activity_embedding_file_path = BASE_DIR / "ml_models" / "activity_embeddings_onnx.npy"
+activity_list_file_path = BASE_DIR / "ml_models" / "activities_list.npy"
+df = pd.read_csv(csv_file_path)
+
+
+
+
+ACTIVITIES = df["activity_name"].to_list()
 MET_LOOKUP = dict(zip(df["activity_name"], df["MET"]))
 
-activity_embeddings = np.load("ml_models/activity_embeddings.npy")
-ACTIVITIES = np.load("ml_models/activities_list.npy", allow_pickle=True)
-# Precompute embeddings using OpenAI
-def get_embeddings(texts):
-    response = client.embeddings.create(
-        model="text-embedding-3-small",
-        input=texts
-    )
-    return [item.embedding for item in response.data]
+
+# Load the saved assets
+save_directory = "onnx_model_all_minilm"
+model = ORTModelForFeatureExtraction.from_pretrained(BASE_DIR / save_directory)
+tokenizer = AutoTokenizer.from_pretrained(BASE_DIR / save_directory)
+
+# Load the pre-calculated library (The "Matrix")
+activity_embeddings = np.load(activity_embedding_file_path)
+
+log_mem("After imports")
 
 
 # 🧠 Duration word mapping
@@ -166,25 +198,27 @@ def llm_fallback(segment: str):
     }
 
 
+
 # 🧠 Activity detection using embeddings
 def detect_activity(text: str):
-    # print("Detect activity text : ",text)
-    input_embedding = model.encode([text])
-    similarities = cosine_similarity(
-        np.array(input_embedding),
-        np.array(activity_embeddings)
-    )[0]
+    """
+    Uses the ONNX model and pre-calculated library to find the best activity match.
+    """
+    # 1. Generate the embedding for the user's input using the ONNX helper
+    input_embedding = get_onnx_embedding(text, model, tokenizer)
+    
+    # 2. Compare the user's vector to the pre-loaded library (the .npy file)
+    # This is a matrix-vector multiplication, which is incredibly fast
+    similarities = cosine_similarity(input_embedding, activity_embeddings)[0]
 
+    # 3. Find the index of the highest similarity score
     best_idx = np.argmax(similarities)
-    best_score = similarities[best_idx]
-
+    
+    # 4. Retrieve the corresponding activity and MET value
     activity = ACTIVITIES[best_idx]
-    confidence = round(float(best_score) * 100, 2)
-
+    best_score = similarities[best_idx]
     met_value = MET_LOOKUP[activity]
-
-    # print("Print 1: ",activity,"\t",best_score,"\t",met_value)
-
+    
     return activity, best_score, met_value
 
 
@@ -250,20 +284,22 @@ def parse_input(text: str,weight_kg,raw_input = False):
     return results
 
 
-# # 🧪 Example
-# if __name__ == "__main__":
-#     running = True
-#     while(running):
-#         # user_input = input("Log Activity : ")
-#         # if user_input.lower() == "stop":
-#         #     exit()
-#         user_input = "i walk 1km then i ran for 10km after that i had breakfast of poha"
-#         result = parse_input(user_input,25)
+# 🧪 Example
+if __name__ == "__main__":
+    running = True
+    while(running):
+        # user_input = input("Log Activity : ")
+        # if user_input.lower() == "stop":
+        #     exit()
+        user_input = "i walk 1km then i ran for 10km after that i had breakfast of poha"
+        result = parse_input(user_input,25)
 
-#         print("\n" + "+---"*20 + "+")
+        print("\n" + "+---"*20 + "+")
 
-#         print(json.dumps(result,indent=2))
-#         running = False
+        print(json.dumps(result,indent=2))
+
+        log_mem("At End of Program")
+        running = False
 
 
 

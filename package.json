@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "lucide-react": "^0.575.0"
+    "lucide-react": "^0.575.0",
+    "optimum": "^2.3.1"
   }
 }
