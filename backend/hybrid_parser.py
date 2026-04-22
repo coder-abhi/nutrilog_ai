@@ -54,7 +54,7 @@ MET_LOOKUP = dict(zip(df["activity_name"], df["MET"]))
 
 
 # Load the saved assets
-save_directory = "onnx_model_all_minilm"
+save_directory = "onnx_model_all_minilm_quantized"
 model = ORTModelForFeatureExtraction.from_pretrained(BASE_DIR / save_directory)
 tokenizer = AutoTokenizer.from_pretrained(BASE_DIR / save_directory)
 
