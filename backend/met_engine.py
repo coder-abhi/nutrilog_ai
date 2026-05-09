@@ -1,34 +1,3 @@
-MET_VALUES = {
-    "walking": 3.8,
-    "running": 9.8,
-    "cycling": 7.5,
-    "swimming": 8.0,
-    "weight training": 6.0,
-    "yoga": 3.0,
-    "football": 8.5,
-    "basketball": 8.0,
-}
-
-AVERAGE_SPEED = {
-    "walking": 5,     # km/h
-    "running": 10,
-    "cycling": 15,
-}
-
-def calculate_calories_burned(results: dict, weight_kg: float):
-    total_calories = 0
-
-    for item in results.get("local", []):
-        met = item.get("met_value")
-        duration = item.get("duration_min")
-
-        calories = met * weight_kg * (duration / 60)
-        calories = round(float(calories), 2)
-
-        total_calories += calories
-
-    return round(total_calories)
-
 # def calculate_calories_burned(activity_type: str, quantity: float, unit: str, weight: float) -> int:
     
 #     activity_type = activity_type.lower()

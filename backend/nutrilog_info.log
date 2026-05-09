@@ -112,3 +112,23 @@
 2026-04-21 15:58:11,383 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
 2026-04-21 15:58:11,395 - INFO - OpenAI API call took 2.6619 seconds
 2026-04-21 15:58:11,406 - INFO - /log_input took 3.1296s
+2026-04-23 01:47:55,194 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-23 01:47:55,207 - INFO - OpenAI API call took 3.5100 seconds
+2026-04-23 01:47:55,217 - INFO - /log_input took 3.7240s
+2026-04-23 01:48:14,647 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-04-23 01:48:14,649 - INFO - OpenAI API call took 2.2834 seconds
+2026-04-23 01:48:14,659 - INFO - /log_input took 2.3040s
+2026-05-10 00:52:34,677 - INFO - /log_input took 0.0133s
+2026-05-10 00:53:15,493 - INFO - /docs took 0.0239s
+2026-05-10 00:53:16,185 - INFO - /openapi.json took 0.2057s
+2026-05-10 00:54:20,053 - INFO - /signin took 0.0589s
+2026-05-10 00:56:56,387 - INFO - /passive_calorie_burned took 0.0123s
+2026-05-10 00:59:03,323 - INFO - /passive_calorie_burned took 0.0224s
+2026-05-10 00:59:24,081 - INFO - /today_summary took 0.0223s
+2026-05-10 00:59:25,786 - INFO - /today_summary took 0.0046s
+2026-05-10 00:59:50,799 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-10 00:59:50,811 - INFO - OpenAI API call took 2.3683 seconds
+2026-05-10 00:59:50,817 - INFO - /log_input took 2.6177s
+2026-05-10 01:00:12,814 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-10 01:00:12,822 - INFO - OpenAI API call took 3.1267 seconds
+2026-05-10 01:00:12,840 - INFO - /log_input took 3.1592s
