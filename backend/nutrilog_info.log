@@ -132,3 +132,11 @@
 2026-05-10 01:00:12,814 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
 2026-05-10 01:00:12,822 - INFO - OpenAI API call took 3.1267 seconds
 2026-05-10 01:00:12,840 - INFO - /log_input took 3.1592s
+2026-05-10 01:38:25,446 - INFO - /docs took 0.0003s
+2026-05-10 01:38:25,879 - INFO - /openapi.json took 0.0291s
+2026-05-10 01:45:33,942 - INFO - /test took 0.0002s
+2026-05-10 01:45:35,691 - INFO - /test took 0.0002s
+2026-05-10 01:45:36,902 - INFO - /test took 0.0003s
+2026-05-10 01:45:38,408 - INFO - /test took 0.0002s
+2026-05-10 01:46:47,212 - INFO - /test took 0.0017s
+2026-05-10 01:46:49,554 - INFO - /test took 0.0009s

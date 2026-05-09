@@ -63,8 +63,8 @@ app.add_middleware(
 )
 
 
-@app.post("/test")
-def calculate(data: ActivityInput, db: Session = Depends(get_db)):
+@app.get("/test")
+def calculate(db: Session = Depends(get_db)):
     return "Hello, World!"
 
 from typing import List

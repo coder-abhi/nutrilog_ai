@@ -78,6 +78,8 @@ backend/.mypy_cache/
 backend/.ruff_cache/
 backend/.coverage
 backend/htmlcov/
+*.pyc
+backend/*.log
 
 # Virtual environments
 backend/venv/
