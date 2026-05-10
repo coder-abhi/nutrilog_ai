@@ -82,21 +82,24 @@ export default function WeightTracker() {
       ? user.target_weight_kg
       : Math.max(0, currentWeightKg - 5);
 
-  const visibleValues = visibleEntries.length
-    ? visibleEntries.map((e) => e.value_kg)
-    : (user?.weight_kg ? [user.weight_kg] : []);
-  const max = Math.max(...visibleValues, targetWeightKg, 1);
-  const min = Math.min(...visibleValues, targetWeightKg, 0);
+  const visibleValues = visibleEntries.map((e) => e.value_kg);
+  const highestVisibleWeight = Math.max(...visibleValues);
+  const lowestVisibleWeight = Math.min(...visibleValues);
+  const max = highestVisibleWeight + 5;
+  const min = Math.max(0, lowestVisibleWeight - 5);
 
   const points = visibleEntries
     .map((p, index) => {
-      const x = (visibleEntries.length - 1 ? index / (visibleEntries.length - 1) : 0) * 100;
+      const x = (visibleEntries.length - 1 ? index / (visibleEntries.length - 1) : 0.5) * 100;
       const y = ((max - p.value_kg) / (max - min || 1)) * 100;
       return `${x},${y}`;
     })
     .join(" ");
 
   const targetY = ((max - targetWeightKg) / (max - min || 1)) * 100;
+  const yAxisLabels = [max, (max + min) / 2, min];
+  const firstVisibleDate = visibleEntries[0]?.recorded_at ?? null;
+  const lastVisibleDate = visibleEntries[visibleEntries.length - 1]?.recorded_at ?? null;
 
   const formatDate = (iso: string | null) => {
     if (!iso) return "—";
@@ -222,37 +225,52 @@ export default function WeightTracker() {
 
           <div className={styles.chartWrapper}>
             {visibleEntries.length ? (
-              <svg
-                viewBox="0 0 100 100"
-                preserveAspectRatio="none"
-                className={styles.chartSvg}
-              >
-                <line
-                  x1="0"
-                  x2="100"
-                  y1={targetY}
-                  y2={targetY}
-                  className={styles.targetLine}
-                />
-                <polyline
-                  fill="none"
-                  points={points}
-                  className={styles.weightLine}
-                />
-                {visibleEntries.map((entry, index) => {
-                  const cx = (visibleEntries.length - 1 ? index / (visibleEntries.length - 1) : 0.5) * 100;
-                  const cy = ((max - entry.value_kg) / (max - min || 1)) * 100;
-                  return (
-                    <circle
-                      key={`${entry.recorded_at ?? "point"}-${index}`}
-                      cx={cx}
-                      cy={cy}
-                      r="1.5"
-                      className={styles.weightPoint}
+              <div className={styles.chartGrid}>
+                <div className={styles.yAxis}>
+                  {yAxisLabels.map((value, index) => (
+                    <span key={`${value}-${index}`}>{value.toFixed(1)} kg</span>
+                  ))}
+                </div>
+                <div className={styles.plotArea}>
+                  <svg
+                    viewBox="0 0 100 100"
+                    preserveAspectRatio="none"
+                    className={styles.chartSvg}
+                  >
+                    {targetY >= 0 && targetY <= 100 && (
+                      <line
+                        x1="0"
+                        x2="100"
+                        y1={targetY}
+                        y2={targetY}
+                        className={styles.targetLine}
+                      />
+                    )}
+                    <polyline
+                      fill="none"
+                      points={points}
+                      className={styles.weightLine}
                     />
-                  );
-                })}
-              </svg>
+                    {visibleEntries.map((entry, index) => {
+                      const cx = (visibleEntries.length - 1 ? index / (visibleEntries.length - 1) : 0.5) * 100;
+                      const cy = ((max - entry.value_kg) / (max - min || 1)) * 100;
+                      return (
+                        <circle
+                          key={`${entry.recorded_at ?? "point"}-${index}`}
+                          cx={cx}
+                          cy={cy}
+                          r="1.5"
+                          className={styles.weightPoint}
+                        />
+                      );
+                    })}
+                  </svg>
+                </div>
+                <div className={styles.xAxis}>
+                  <span>{formatDate(firstVisibleDate)}</span>
+                  <span>{formatDate(lastVisibleDate)}</span>
+                </div>
+              </div>
             ) : (
               <div className={styles.emptyChart}>
                 No entries in this range yet.

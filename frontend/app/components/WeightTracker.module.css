@@ -281,23 +281,29 @@
 .chartSvg {
   width: 100%;
   height: 100%;
+  display: block;
 }
 
 .targetLine {
   stroke: #22c55e;
   stroke-width: 0.6;
   stroke-dasharray: 2 2;
+  vector-effect: non-scaling-stroke;
 }
 
 .weightLine {
   stroke: #2563eb;
   stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .weightPoint {
   fill: #2563eb;
   stroke: #ffffff;
   stroke-width: 0.8;
+  vector-effect: non-scaling-stroke;
 }
 
 .emptyChart {
