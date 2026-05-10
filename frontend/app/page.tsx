@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import AuthGate from "./components/AuthGate";
 import BottomInput from "./components/BottomInput";
 import styles from "./page.module.css";
 import { useAuth } from "./context/AuthContext";
 import Header from "./components/Header";
-import DivergingBar from "./components/DivergingBar";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 type FoodEntry = {
@@ -31,6 +30,11 @@ type ActivityEntry = {
 };
 
 type LogEntry = (FoodEntry & { kind: "food" }) | (ActivityEntry & { kind: "activity" });
+
+type InsulinCurve = {
+  timestamp: string | null;
+  points: { minute: number; value: number }[];
+};
 
 type SummaryData = {
   calories_intake: number;
@@ -68,10 +72,37 @@ function formatDisplayDate(dateStr: string) {
   });
 }
 
+function formatHour(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const suffix = hours >= 12 ? "PM" : "AM";
+  return `${hours % 12 || 12}${suffix}`;
+}
+
+function buildSmoothPath(points: { x: number; y: number }[]) {
+  if (!points.length) return "";
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+
+  return points.reduce((path, point, index) => {
+    if (index === 0) return `M ${point.x} ${point.y}`;
+    const prev = points[index - 1];
+    const midX = (prev.x + point.x) / 2;
+    const midY = (prev.y + point.y) / 2;
+    return `${path} Q ${prev.x} ${prev.y} ${midX} ${midY}`;
+  }, "") + ` T ${points[points.length - 1].x} ${points[points.length - 1].y}`;
+}
+
+function scaleInsulinPoint(point: { minute: number; value: number }, maxValue: number) {
+  return {
+    x: (point.minute / 1439) * 100,
+    y: 100 - (point.value / maxValue) * 100,
+  };
+}
+
 function DashboardContent() {
   const { user, signOut, getAuthHeaders } = useAuth();
   const [summaryData, setSummaryData] = useState<SummaryData>(EMPTY_SUMMARY);
   const [entries, setEntries] = useState<LogEntry[]>([]);
+  const [insulinCurves, setInsulinCurves] = useState<InsulinCurve[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(() => toYMD(new Date()));
   const [dashboardRange, setDashboardRange] = useState<DashboardRange>("today");
@@ -126,9 +157,11 @@ function DashboardContent() {
           return bTime - aTime;
         });
       setEntries(logEntries);
+      setInsulinCurves(summaries.flatMap((item) => item?.insulin_curves ?? []));
     } catch {
       setSummaryData(EMPTY_SUMMARY);
       setEntries([]);
+      setInsulinCurves([]);
     } finally {
       setLoading(false);
     }
@@ -179,6 +212,49 @@ function DashboardContent() {
       : dashboardRange === "week"
         ? "Last 7 days"
         : "Last 30 days";
+
+  const insulinChart = useMemo(() => {
+    const contributions = new Map<number, number>();
+    const keyMinutes = new Set<number>([0, 360, 720, 1080, 1439]);
+    insulinCurves.forEach((curve) => {
+      if (!curve.timestamp) return;
+      const logDate = new Date(curve.timestamp);
+      const baseMinute = logDate.getHours() * 60 + logDate.getMinutes();
+      const curveEndMinute = Math.max(...curve.points.map((point) => point.minute), 0);
+
+      if (baseMinute > 0 && baseMinute <= 1439) keyMinutes.add(baseMinute - 1);
+      if (baseMinute + curveEndMinute < 1439) keyMinutes.add(baseMinute + curveEndMinute + 1);
+
+      curve.points.forEach((point) => {
+        const absoluteMinute = baseMinute + point.minute;
+        if (absoluteMinute < 0 || absoluteMinute > 1439) return;
+        keyMinutes.add(absoluteMinute);
+        const contribution = Math.max(0, point.value - 8);
+        contributions.set(
+          absoluteMinute,
+          (contributions.get(absoluteMinute) ?? 0) + contribution
+        );
+      });
+    });
+
+    const series = Array.from(keyMinutes)
+      .sort((a, b) => a - b)
+      .map((minute) => ({
+        minute,
+        value: Math.min(100, 8 + (contributions.get(minute) ?? 0)),
+      }));
+    const maxValue = Math.max(20, ...series.map((point) => point.value));
+    const svgPoints = series.map((point) => scaleInsulinPoint(point, maxValue));
+    const path = buildSmoothPath(svgPoints);
+
+    return {
+      path,
+      areaPath: path ? `${path} L 100 100 L 0 100 Z` : "",
+      maxValue,
+      peak: Math.max(...series.map((point) => point.value)),
+      hasData: insulinCurves.some((curve) => curve.points.length > 0),
+    };
+  }, [insulinCurves]);
 
   return (
     <div className={styles.page}>
@@ -292,16 +368,30 @@ function DashboardContent() {
           </div>
 
           <div className={styles.card}>
-          <div className={styles.cardLabel}>Calorie Balance</div>
-          <div className={styles.macrosRow}>
-
-              <DivergingBar 
-              consumed={data.caloriesIntake} 
-              burned={data.caloriesBurned} 
-              passiveBurn={passiveCaloriesForRange}
-              />
-
-          </div>
+            <div className={styles.cardHeaderRow}>
+              <div className={styles.cardLabel}>Postprandial insulin</div>
+              <span className={styles.chartPeak}>Peak {Math.round(insulinChart.peak)}</span>
+            </div>
+            <div className={styles.insulinChart}>
+              <div className={styles.insulinYAxis}>
+                <span>{Math.round(insulinChart.maxValue)}</span>
+                <span>0</span>
+              </div>
+              <div className={styles.insulinPlot}>
+                <svg viewBox="0 0 100 100" preserveAspectRatio="none" className={styles.insulinSvg}>
+                  <path d={insulinChart.areaPath} className={styles.insulinArea} />
+                  <path d={insulinChart.path} className={styles.insulinLine} />
+                </svg>
+              </div>
+              <div className={styles.insulinXAxis}>
+                {[0, 360, 720, 1080, 1439].map((minute) => (
+                  <span key={minute}>{formatHour(minute)}</span>
+                ))}
+              </div>
+            </div>
+            {!insulinChart.hasData && (
+              <div className={styles.chartEmptyHint}>Log a meal to see the response curve.</div>
+            )}
           </div>
 
         </section>

@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, Nullable, String, Float, DateTime, ForeignKey, create_engine, engine, text
+from sqlalchemy import Column, Integer, Nullable, String, Float, DateTime, ForeignKey, Text, create_engine, engine, text
 from sqlalchemy.orm import relationship, declarative_base, sessionmaker
 import uuid
 import hashlib
@@ -64,6 +64,7 @@ class HealthLogDB(Base):
     user_id = Column(String, nullable=False, index=True)
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     raw_text = Column(String, nullable=False)
+    insulin_curve = Column(Text, nullable=True)
 
     activities = relationship("ActivityDB", back_populates="log", cascade="all, delete")
     foods = relationship("FoodDB", back_populates="log", cascade="all, delete")
@@ -146,7 +147,7 @@ def get_user_by_username_and_password(session, username: str, password: str) -> 
     return user
 
 
-def create_health_log(session, user_id: str, raw_text: str, activities, foods, timestamp: datetime | None = None):
+def create_health_log(session, user_id: str, raw_text: str, activities, foods, timestamp: datetime | None = None, insulin_curve: str | None = None):
     """
     Persist one full transaction:
     - Creates HealthLog row
@@ -156,7 +157,8 @@ def create_health_log(session, user_id: str, raw_text: str, activities, foods, t
     log = HealthLogDB(
         user_id=user_id,
         raw_text=raw_text,
-        timestamp=timestamp or datetime.utcnow()
+        timestamp=timestamp or datetime.utcnow(),
+        insulin_curve=insulin_curve
     )
 
     session.add(log)
@@ -258,6 +260,19 @@ def _migrate_add_target_weight():
 
 
 _migrate_add_target_weight()
+
+
+def _migrate_add_insulin_curve():
+    """Add insulin_curve to health_logs if missing."""
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE health_logs ADD COLUMN insulin_curve TEXT"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+
+_migrate_add_insulin_curve()
 
 
 def get_db():

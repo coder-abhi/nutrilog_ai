@@ -20,9 +20,23 @@ type Props = {
   logDate: string;
 };
 
+function getCurrentMinutes() {
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes();
+}
+
+function formatSliderTime(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  const suffix = hours >= 12 ? "PM" : "AM";
+  const displayHours = hours % 12 || 12;
+  return `${displayHours}:${String(mins).padStart(2, "0")} ${suffix}`;
+}
+
 export default function BottomInput({ onCaloriesCalculated, logDate }: Props) {
   const { getAuthHeaders, signOut } = useAuth();
   const [input, setInput] = useState("");
+  const [logTimeMinutes, setLogTimeMinutes] = useState(() => getCurrentMinutes());
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -35,7 +49,7 @@ export default function BottomInput({ onCaloriesCalculated, logDate }: Props) {
       const response = await fetch(`${API_BASE}/log_input`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ sentence: userText, date: logDate }),
+        body: JSON.stringify({ sentence: userText, date: logDate, log_time_minutes: logTimeMinutes }),
       });
       const data = await response.json();
       if (response.status === 401) {
@@ -49,6 +63,7 @@ export default function BottomInput({ onCaloriesCalculated, logDate }: Props) {
       }
       onCaloriesCalculated(data);
       setInput("");
+      setLogTimeMinutes(getCurrentMinutes());
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Network error. Is the backend running?";
       setErrorMessage(msg);
@@ -60,6 +75,31 @@ export default function BottomInput({ onCaloriesCalculated, logDate }: Props) {
   return (
     <div className={styles.bar}>
       {errorMessage && <p className={styles.errorText}>{errorMessage}</p>}
+      {input.trim() && (
+        <div className={styles.timeSliderWrap}>
+        <div className={styles.timeSliderHeader}>
+          <span>Log time</span>
+          <strong>{formatSliderTime(logTimeMinutes)}</strong>
+        </div>
+        <div className={styles.timeScale}>
+          <span>12 AM</span>
+          <span>6 AM</span>
+          <span>12 PM</span>
+          <span>6 PM</span>
+          <span>12 AM</span>
+        </div>
+        <input
+          type="range"
+          min="0"
+          max="1439"
+          step="5"
+          value={logTimeMinutes}
+          onChange={(e) => setLogTimeMinutes(Number(e.target.value))}
+          className={styles.timeSlider}
+          aria-label="Log time"
+        />
+      </div>
+      )}
       <div className={styles.barRow}>
         <input
           type="text"

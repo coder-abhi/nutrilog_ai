@@ -164,7 +164,19 @@ def today_summary(date: str | None = None, db: Session = Depends(get_db), curren
     sugar = 0
     foods_list = []
     activities_list = []
+    insulin_curves = []
     for log in logs:
+        insulin_curve = []
+        if log.insulin_curve:
+            try:
+                insulin_curve = json.loads(log.insulin_curve)
+            except json.JSONDecodeError:
+                insulin_curve = []
+        if insulin_curve:
+            insulin_curves.append({
+                "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+                "points": insulin_curve,
+            })
         for f in log.foods:
             calories_intake += f.calories
             protein += f.protein
@@ -203,6 +215,7 @@ def today_summary(date: str | None = None, db: Session = Depends(get_db), curren
         },
         "foods": foods_list,
         "activities": activities_list,
+        "insulin_curves": insulin_curves,
     }
 
 
@@ -243,7 +256,7 @@ def add_weight_entry(data: WeightEntryInput, db: Session = Depends(get_db), curr
 
 @app.post("/log_input")
 def analyze_food(data: ActivityInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    from datetime import datetime as dt
+    from datetime import datetime as dt, timedelta
 
     log_timestamp = None
     if data.date:
@@ -251,6 +264,10 @@ def analyze_food(data: ActivityInput, db: Session = Depends(get_db), current_use
             log_timestamp = dt.strptime(data.date, "%Y-%m-%d")
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+    if log_timestamp and data.log_time_minutes is not None:
+        if data.log_time_minutes < 0 or data.log_time_minutes > 1439:
+            raise HTTPException(status_code=400, detail="Invalid log_time_minutes. Use 0-1439.")
+        log_timestamp = log_timestamp + timedelta(minutes=data.log_time_minutes)
 
     user_config = {
         "username": current_user.username,
@@ -271,6 +288,7 @@ From the user's sentence, extract:
 
 1) Physical activities performed.
 2) Foods consumed.
+3) A realistic postprandial insulin response curve for the foods consumed.
 
 Return ONLY valid JSON.
 Do NOT include explanations.
@@ -302,6 +320,12 @@ Output format must be exactly:
       "saturated_fat": number,
       "sodium": number
     }}
+  ],
+  "insulin_curve": [
+    {{
+      "minute": number,
+      "value": number
+    }}
   ]
 }}
 
@@ -313,6 +337,11 @@ Rules:
 - Estimate calories burned using user weight and realistic MET values.
 - If a category has no entries, return an empty array.
 - Do not invent unrealistic quantities.
+- Insulin curve values are relative to the meal time.
+- If there are foods, return insulin_curve points every 10 minutes from minute 0 through minute 240 inclusive.
+- Insulin value is an estimated relative insulin index from 0 to 100, where fasting/baseline is 5-10, moderate meal peak is 35-60, and high refined-carb/sugar meal peak is 70-95.
+- Shape the insulin curve smoothly: start near baseline, rise after eating, peak around 30-90 minutes depending on carbs/sugar, then return near baseline by 180-240 minutes.
+- If there are no foods, return "insulin_curve": [].
 
 """
     
@@ -343,7 +372,8 @@ Rules:
         raw_text=data.sentence,
         activities=parsed.activities,
         foods=parsed.foods,
-        timestamp=log_timestamp
+        timestamp=log_timestamp,
+        insulin_curve=json.dumps([point.model_dump() for point in parsed.insulin_curve])
     )
 
 

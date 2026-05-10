@@ -23,6 +23,10 @@ class Food(BaseModel):
     saturated_fat: int
     sodium: int
 
+class InsulinPoint(BaseModel):
+    minute: int
+    value: int
+
 class HealthLog(BaseModel):
     user_id: str
     timestamp: datetime
@@ -33,10 +37,12 @@ class HealthLog(BaseModel):
 class ExtractionResponse(BaseModel):
     activities: List[Activity]
     foods: List[Food]
+    insulin_curve: List[InsulinPoint] = []
 
 class ActivityInput(BaseModel):
     sentence: str
     date: str | None = None
+    log_time_minutes: int | None = None
 
 
 class SignInInput(BaseModel):
