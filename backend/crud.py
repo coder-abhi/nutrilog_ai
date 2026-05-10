@@ -146,7 +146,7 @@ def get_user_by_username_and_password(session, username: str, password: str) -> 
     return user
 
 
-def create_health_log(session, user_id: str, raw_text: str, activities, foods):
+def create_health_log(session, user_id: str, raw_text: str, activities, foods, timestamp: datetime | None = None):
     """
     Persist one full transaction:
     - Creates HealthLog row
@@ -155,7 +155,8 @@ def create_health_log(session, user_id: str, raw_text: str, activities, foods):
 
     log = HealthLogDB(
         user_id=user_id,
-        raw_text=raw_text
+        raw_text=raw_text,
+        timestamp=timestamp or datetime.utcnow()
     )
 
     session.add(log)

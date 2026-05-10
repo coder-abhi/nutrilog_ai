@@ -17,9 +17,10 @@ export type SummaryData = {
 
 type Props = {
   onCaloriesCalculated: (data: SummaryData) => void;
+  logDate: string;
 };
 
-export default function BottomInput({ onCaloriesCalculated }: Props) {
+export default function BottomInput({ onCaloriesCalculated, logDate }: Props) {
   const { getAuthHeaders, signOut } = useAuth();
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -34,7 +35,7 @@ export default function BottomInput({ onCaloriesCalculated }: Props) {
       const response = await fetch(`${API_BASE}/log_input`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ sentence: userText }),
+        body: JSON.stringify({ sentence: userText, date: logDate }),
       });
       const data = await response.json();
       if (response.status === 401) {

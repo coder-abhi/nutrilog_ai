@@ -101,6 +101,7 @@ def signup(data: SignUpInput, db: Session = Depends(get_db)):
                 "height_cm": user.height_cm,
                 "gender": user.gender,
                 "activity_level": user.activity_level,
+                "goal": user.goal or "",
             },
         }
     except ValueError as e:
@@ -124,6 +125,7 @@ def signin(data: SignInInput, db: Session = Depends(get_db)):
             "height_cm": user.height_cm,
             "gender": user.gender,
             "activity_level": user.activity_level,
+            "goal": user.goal or "",
         },
     }
 @app.get("/passive_calorie_burned")
@@ -241,6 +243,15 @@ def add_weight_entry(data: WeightEntryInput, db: Session = Depends(get_db), curr
 
 @app.post("/log_input")
 def analyze_food(data: ActivityInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    from datetime import datetime as dt
+
+    log_timestamp = None
+    if data.date:
+        try:
+            log_timestamp = dt.strptime(data.date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+
     user_config = {
         "username": current_user.username,
         "age": 25,
@@ -331,7 +342,8 @@ Rules:
         user_id=current_user.username,
         raw_text=data.sentence,
         activities=parsed.activities,
-        foods=parsed.foods
+        foods=parsed.foods,
+        timestamp=log_timestamp
     )
 
 

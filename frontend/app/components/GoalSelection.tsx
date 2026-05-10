@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import styles from "./GoalSelection.module.css";
 
 
-type GoalValue =
+export type GoalValue =
   | "muscle_gain"
   | "weight_loss"
   | "skin_health"
@@ -46,7 +45,8 @@ const GOALS = [
 ];
 
 type GoalSelectionProps = {
-  onGoalChange: (value: GoalValue) => void;
+  selectedGoal: GoalValue | null;
+  onGoalChange: (value: GoalValue | null) => void;
   onWeightChange: (value: string) => void;
   onTargetWeightChange: (value: string) => void;
   onHeightChange: (value: string) => void;
@@ -56,6 +56,7 @@ type GoalSelectionProps = {
 };
 
 export default function GoalSelection({
+  selectedGoal,
   onGoalChange,
   onWeightChange,
   onTargetWeightChange,
@@ -64,21 +65,18 @@ export default function GoalSelection({
   currTargetWeight,
   currHeight,
 }: GoalSelectionProps) {
-  const [selectedGoal, setSelectedGoal] = useState<GoalValue | null>(null);
-
   const handleSelect = (value: GoalValue) => {
-    setSelectedGoal(value);
-    onGoalChange(value);
+    onGoalChange(selectedGoal === value ? null : value);
   };
-
-  const showBodyFields =
-    selectedGoal === "muscle_gain" || selectedGoal === "weight_loss";
 
   return (
     <div className={styles.goalPanel}>
       <h2 className={styles.heading}>
         Choose your goal
       </h2>
+      <p className={styles.subheading}>
+        Optional. Add the details you know now, or skip and fill them later.
+      </p>
 
       <div className={styles.goalGrid}>
         {GOALS.map((goal) => {
@@ -103,11 +101,10 @@ export default function GoalSelection({
         })}
       </div>
 
-      {showBodyFields && (
-        <div className={styles.bodyPanel}>
+      <div className={styles.bodyPanel}>
           <label className={styles.field}>
             <span className={styles.fieldLabel}>
-              Current weight (kg)
+              Current weight <span>optional</span>
             </span>
             <span className={styles.fieldControl}>
               <input
@@ -124,24 +121,7 @@ export default function GoalSelection({
 
           <label className={styles.field}>
             <span className={styles.fieldLabel}>
-              Target weight (kg)
-            </span>
-            <span className={styles.fieldControl}>
-              <input
-                type="number"
-                step="0.1"
-                value={currTargetWeight}
-                onChange={(e) => onTargetWeightChange(e.target.value)}
-                className={styles.fieldInput}
-                placeholder="e.g. 78"
-              />
-              <span className={styles.unit}>kg</span>
-            </span>
-          </label>
-
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>
-              Height (cm)
+              Height <span>optional</span>
             </span>
             <span className={styles.fieldControl}>
               <input
@@ -155,8 +135,26 @@ export default function GoalSelection({
               <span className={styles.unit}>cm</span>
             </span>
           </label>
-        </div>
-      )}
+
+        {selectedGoal === "weight_loss" && (
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              Target weight <span>optional</span>
+            </span>
+            <span className={styles.fieldControl}>
+              <input
+                type="number"
+                step="0.1"
+                value={currTargetWeight}
+                onChange={(e) => onTargetWeightChange(e.target.value)}
+                className={styles.fieldInput}
+                placeholder="e.g. 68"
+              />
+              <span className={styles.unit}>kg</span>
+            </span>
+          </label>
+        )}
+      </div>
     </div>
   );
 }

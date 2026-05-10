@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
 import AuthGate from "./components/AuthGate";
 import BottomInput from "./components/BottomInput";
 import styles from "./page.module.css";
@@ -23,47 +22,117 @@ type FoodEntry = {
   timestamp?: string | null;
 };
 
+type ActivityEntry = {
+  type: string;
+  quantity: number;
+  unit: string;
+  calories_burned: number;
+  timestamp?: string | null;
+};
+
+type LogEntry = (FoodEntry & { kind: "food" }) | (ActivityEntry & { kind: "activity" });
+
+type SummaryData = {
+  calories_intake: number;
+  calories_burned: number;
+  protein: number;
+  carbs: number;
+  fibre: number;
+  sugar: number;
+};
+
+type DashboardRange = "today" | "week" | "month";
+
+const EMPTY_SUMMARY: SummaryData = {
+  calories_intake: 0,
+  calories_burned: 0,
+  protein: 0,
+  carbs: 0,
+  fibre: 0,
+  sugar: 0,
+};
+
+function toYMD(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function formatDisplayDate(dateStr: string) {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric"
+  });
+}
+
 function DashboardContent() {
   const { user, signOut, getAuthHeaders } = useAuth();
-  const [summaryData, setSummaryData] = useState({
-    calories_intake: 0,
-    calories_burned: 0,
-    protein: 0,
-    carbs: 0,
-    fibre: 0,
-    sugar: 0
-  });
-  const [foods, setFoods] = useState<FoodEntry[]>([]);
+  const [summaryData, setSummaryData] = useState<SummaryData>(EMPTY_SUMMARY);
+  const [entries, setEntries] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(() => toYMD(new Date()));
+  const [dashboardRange, setDashboardRange] = useState<DashboardRange>("today");
   const [passiveCalorie, setPassiveCalorie] = useState(0)
+  const selectedRangeDays = dashboardRange === "today" ? 1 : dashboardRange === "week" ? 7 : 30;
 
-  const fetchTodaySummary = useCallback(async () => {
+  const fetchSummaryForDate = useCallback(async (date: string) => {
     if (!user?.username) return;
+    const res = await fetch(`${API_BASE}/today_summary?date=${date}`, {
+      headers: { ...getAuthHeaders() },
+    });
+    if (res.status === 401) {
+      signOut();
+      return null;
+    }
+    if (!res.ok) return null;
+    return res.json();
+  }, [user?.username, getAuthHeaders, signOut]);
+
+  const fetchDashboardSummary = useCallback(async () => {
+    if (!user?.username) return;
+    setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/today_summary`, {
-        headers: { ...getAuthHeaders() },
+      const end = new Date(`${selectedDate}T00:00:00`);
+      const dates = Array.from({ length: selectedRangeDays }, (_, index) => {
+        const date = new Date(end);
+        date.setDate(end.getDate() - (selectedRangeDays - 1 - index));
+        return toYMD(date);
       });
-      if (res.status === 401) {
-        signOut();
-        return;
-      }
-      if (!res.ok) return;
-      const data = await res.json();
-      setSummaryData({
-        calories_intake: data.summary?.calories_intake ?? 0,
-        calories_burned: data.summary?.calories_burned ?? 0,
-        protein: data.summary?.protein ?? 0,
-        carbs: data.summary?.carbs ?? 0,
-        fibre: data.summary?.fibre ?? 0,
-        sugar: data.summary?.sugar ?? 0,
-      });
-      setFoods(data.foods ?? []);
+
+      const summaries = await Promise.all(dates.map((date) => fetchSummaryForDate(date)));
+      const aggregate = summaries.reduce<SummaryData>((acc, item) => {
+        const summary = item?.summary ?? {};
+        return {
+          calories_intake: acc.calories_intake + (summary.calories_intake ?? 0),
+          calories_burned: acc.calories_burned + (summary.calories_burned ?? 0),
+          protein: acc.protein + (summary.protein ?? 0),
+          carbs: acc.carbs + (summary.carbs ?? 0),
+          fibre: acc.fibre + (summary.fibre ?? 0),
+          sugar: acc.sugar + (summary.sugar ?? 0),
+        };
+      }, { ...EMPTY_SUMMARY });
+      setSummaryData(aggregate);
+      const logEntries = summaries
+        .flatMap((item) => [
+          ...((item?.foods ?? []).map((entry: FoodEntry) => ({ ...entry, kind: "food" as const }))),
+          ...((item?.activities ?? []).map((entry: ActivityEntry) => ({ ...entry, kind: "activity" as const }))),
+        ])
+        .sort((a, b) => {
+          const aTime = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+          const bTime = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+          return bTime - aTime;
+        });
+      setEntries(logEntries);
     } catch {
-      // ignore
+      setSummaryData(EMPTY_SUMMARY);
+      setEntries([]);
     } finally {
       setLoading(false);
     }
-  }, [user?.username, getAuthHeaders, signOut]);
+  }, [fetchSummaryForDate, selectedDate, selectedRangeDays, user?.username]);
 
   const fetchPassiveCalorie = useCallback(async () => {
     if (!user?.username) return;
@@ -85,9 +154,9 @@ function DashboardContent() {
 
 
   useEffect(() => {
-    fetchTodaySummary();
+    fetchDashboardSummary();
     fetchPassiveCalorie();
-  }, [fetchTodaySummary,fetchPassiveCalorie]);
+  }, [fetchDashboardSummary,fetchPassiveCalorie]);
 
   const data = {
     caloriesIntake: summaryData?.calories_intake ?? 0,
@@ -98,14 +167,18 @@ function DashboardContent() {
     sugar: summaryData?.sugar ?? 0
   };
 
-  const SUGAR_LIMIT = 25;
-  const sugarExceeded = (summaryData?.sugar ?? 0) > SUGAR_LIMIT;
+  const DAILY_SUGAR_LIMIT = 25;
+  const sugarLimit = DAILY_SUGAR_LIMIT * selectedRangeDays;
+  const sugarExceeded = (summaryData?.sugar ?? 0) > sugarLimit;
+  const passiveCaloriesForRange = Math.round(passiveCalorie * selectedRangeDays);
+  const netCalories = data.caloriesIntake - data.caloriesBurned - passiveCaloriesForRange;
 
-  const todayLabel = new Date().toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric"
-  });
+  const rangeLabel =
+    dashboardRange === "today"
+      ? "Selected day"
+      : dashboardRange === "week"
+        ? "Last 7 days"
+        : "Last 30 days";
 
   return (
     <div className={styles.page}>
@@ -119,18 +192,47 @@ function DashboardContent() {
         </section>
 
         <section className={styles.topBar}>
-          <div className={styles.datePill}>{todayLabel}</div>
+          <label className={styles.datePill}>
+            {formatDisplayDate(selectedDate)}
+            <span aria-hidden="true">▾</span>
+            <input
+              type="date"
+              className={styles.dateInput}
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              aria-label="Select dashboard date"
+            />
+          </label>
           <div className={styles.viewTabs}>
-            <button className={styles.viewTabActive}>Today</button>
-            <button className={styles.viewTab}>Week</button>
-            <button className={styles.viewTab}>Month</button>
+            <button
+              type="button"
+              className={dashboardRange === "today" ? styles.viewTabActive : styles.viewTab}
+              onClick={() => setDashboardRange("today")}
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              className={dashboardRange === "week" ? styles.viewTabActive : styles.viewTab}
+              onClick={() => setDashboardRange("week")}
+            >
+              Week
+            </button>
+            <button
+              type="button"
+              className={dashboardRange === "month" ? styles.viewTabActive : styles.viewTab}
+              onClick={() => setDashboardRange("month")}
+            >
+              Month
+            </button>
           </div>
+          <span className={styles.rangeHint}>{rangeLabel}</span>
         </section>
 
         <section className={styles.cardsGrid}>
           <div className={styles.card}>
-            <div className={styles.cardLabel}>Calories</div>
-            <div className={styles.cardNumber}>{data.caloriesIntake}</div>
+            <div className={styles.cardLabel}>Net calories</div>
+            <div className={styles.cardNumber}>{netCalories}</div>
             <div className={styles.cardMeta}>
               <span>Food</span>
               <span>{data.caloriesIntake} kcal</span>
@@ -139,8 +241,9 @@ function DashboardContent() {
               <span>Exercise</span>
               <span>{data.caloriesBurned} kcal</span>
             </div>
-            <div className={styles.cardFooter}>
-              Net {data.caloriesIntake - data.caloriesBurned} kcal
+            <div className={styles.cardMeta}>
+              <span>Passive burn</span>
+              <span>{passiveCaloriesForRange} kcal</span>
             </div>
           </div>
 
@@ -167,19 +270,19 @@ function DashboardContent() {
             >
               <span>Sugar</span>
               <strong>
-                {data.sugar} g
-                {sugarExceeded && ` (over ${SUGAR_LIMIT} g)`}
+                {data.sugar} g / {sugarLimit} g
+                {sugarExceeded && " over"}
               </strong>
             </div>
           </div>
 
 {/* Passsive Calorie Burned Section */}
           <div className={styles.card}>
-            <div className={styles.cardLabel}>Calories Burnd Till Now</div>
+            <div className={styles.cardLabel}>Calories Burned</div>
             <div className={styles.macrosRow}>
               <div className={styles.macroChip}>
                 <span>Resting Flame</span>
-                <strong>{passiveCalorie} kcal</strong>
+                <strong>{passiveCaloriesForRange} kcal</strong>
               </div>
               <div className={styles.macroChip}>
                 <span>Active Burn</span>
@@ -189,13 +292,13 @@ function DashboardContent() {
           </div>
 
           <div className={styles.card}>
-          <div className={styles.cardLabel}>Calories Burnd Till Now</div>
+          <div className={styles.cardLabel}>Calorie Balance</div>
           <div className={styles.macrosRow}>
 
               <DivergingBar 
               consumed={data.caloriesIntake} 
               burned={data.caloriesBurned} 
-              passiveBurn={passiveCalorie}
+              passiveBurn={passiveCaloriesForRange}
               />
 
           </div>
@@ -205,29 +308,53 @@ function DashboardContent() {
 
 
         <section className={styles.entriesSection}>
-          <h2 className={styles.sectionTitle}>Today&apos;s log</h2>
+          <h2 className={styles.sectionTitle}>{rangeLabel} log</h2>
           <p className={styles.sectionHint}>
             Use the input at the bottom to quickly log meals or exercise.
           </p>
           {loading ? (
-            <div className={styles.placeholderCard}>Loading today&apos;s data...</div>
-          ) : foods.length === 0 ? (
+            <div className={styles.placeholderCard}>Loading data...</div>
+          ) : entries.length === 0 ? (
             <div className={styles.placeholderCard}>
               No entries yet. Log meals or exercise below to see them here.
             </div>
           ) : (
             <ul className={styles.foodList}>
-              {foods.map((f, i) => (
-                <li key={`${f.name}-${f.timestamp ?? i}`} className={styles.foodItem}>
-                  <span className={styles.foodName}>{f.name}</span>
-                  <span className={styles.foodQty}>
-                    {f.quantity} {f.unit}
-                  </span>
-                  <span className={styles.foodMacros}>
-                    {f.calories} kcal · P {f.protein}g · C {f.carbs}g · F {f.fat}g
-                  </span>
-                </li>
-              ))}
+              {entries.map((entry, i) => {
+                if (entry.kind === "activity") {
+                  return (
+                    <li
+                      key={`${entry.type}-${entry.timestamp ?? i}`}
+                      className={`${styles.foodItem} ${styles.activityItem}`}
+                    >
+                      <span className={styles.entryType}>Exercise</span>
+                      <span className={styles.foodName}>{entry.type}</span>
+                      <span className={styles.foodQty}>
+                        {entry.quantity} {entry.unit}
+                      </span>
+                      <span className={styles.foodMacros}>
+                        {entry.calories_burned} kcal burned
+                      </span>
+                    </li>
+                  );
+                }
+
+                return (
+                  <li
+                    key={`${entry.name}-${entry.timestamp ?? i}`}
+                    className={`${styles.foodItem} ${styles.foodLogItem}`}
+                  >
+                    <span className={styles.entryType}>Food</span>
+                    <span className={styles.foodName}>{entry.name}</span>
+                    <span className={styles.foodQty}>
+                      {entry.quantity} {entry.unit}
+                    </span>
+                    <span className={styles.foodMacros}>
+                      {entry.calories} kcal · P {entry.protein}g · C {entry.carbs}g · F {entry.fat}g
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
@@ -246,8 +373,9 @@ function DashboardContent() {
             fibre: data.fibre ?? prev.fibre,
             sugar: data.sugar ?? prev.sugar,
           }));
-          fetchTodaySummary();
+          fetchDashboardSummary();
         }}
+        logDate={selectedDate}
         />
         </section>
     </div>

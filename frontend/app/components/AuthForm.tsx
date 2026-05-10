@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import styles from "./AuthForm.module.css";
-import GoalSelection from "./GoalSelection";
+import GoalSelection, { type GoalValue } from "./GoalSelection";
 
 
 const ACTIVITY_OPTIONS = [
@@ -20,6 +20,12 @@ const GENDER_OPTIONS = [
   { value: "other", label: "Other" },
 ];
 
+const DEFAULT_PROFILE = {
+  weightKg: 70,
+  targetWeightKg: null as number | null,
+  heightCm: 170,
+};
+
 export default function AuthForm() {
   const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -34,7 +40,7 @@ export default function AuthForm() {
   const [submitting, setSubmitting] = useState(false);
 
   const [step, setStep] = useState<1 | 2>(1);
-  const [selectedGoal, setSelectedGoal] = useState<string | null>(null);
+  const [selectedGoal, setSelectedGoal] = useState<GoalValue | null>(null);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,22 +69,22 @@ export default function AuthForm() {
       return;
     }
 
-    if (!selectedGoal) {
-      setError("Please select a goal.");
-      return;
-    }
-
     const w = parseFloat(weightKg);
     const tw = parseFloat(targetWeightKg);
     const h = parseFloat(heightCm);
 
-    if (isNaN(w) || w <= 0 || isNaN(h) || h <= 0) {
-      setError("Enter valid weight (kg) and height (cm).");
+    if (weightKg && (isNaN(w) || w <= 0)) {
+      setError("Enter a valid weight (kg), or leave it empty.");
       return;
     }
 
-    if (isNaN(tw) || tw <= 0) {
-      setError("Enter valid target weight (kg).");
+    if (heightCm && (isNaN(h) || h <= 0)) {
+      setError("Enter a valid height (cm), or leave it empty.");
+      return;
+    }
+
+    if (selectedGoal === "weight_loss" && targetWeightKg && (isNaN(tw) || tw <= 0)) {
+      setError("Enter a valid target weight (kg), or leave it empty.");
       return;
     }
 
@@ -87,12 +93,12 @@ export default function AuthForm() {
     const result = await signUp({
       username: username.trim(),
       password,
-      weight_kg: w,
-      target_weight_kg: tw,
-      height_cm: h,
+      weight_kg: weightKg ? w : DEFAULT_PROFILE.weightKg,
+      target_weight_kg: selectedGoal === "weight_loss" && targetWeightKg ? tw : DEFAULT_PROFILE.targetWeightKg,
+      height_cm: heightCm ? h : DEFAULT_PROFILE.heightCm,
       gender,
       activity_level: activityLevel,
-      goal: selectedGoal,
+      goal: selectedGoal ?? "",
     });
 
     setSubmitting(false);
@@ -179,6 +185,7 @@ export default function AuthForm() {
 
           {isSignUp && step === 2 && (
             <GoalSelection 
+            selectedGoal={selectedGoal}
             onGoalChange={setSelectedGoal} 
             onWeightChange = {setWeightKg} 
             onTargetWeightChange = {setTargetWeightKg}
@@ -205,6 +212,27 @@ export default function AuthForm() {
                     : "Complete Sign up"
                   : "Sign in"}
             </button>
+            {isSignUp && step === 2 && (
+              <div className={styles.secondaryActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => {
+                    setError("");
+                    setStep(1);
+                  }}
+                >
+                  Back
+                </button>
+                <button
+                  type="submit"
+                  className={styles.secondaryButton}
+                  disabled={submitting}
+                >
+                  Skip for now
+                </button>
+              </div>
+            )}
             <button
               type="button"
               className={styles.switchButton}

@@ -36,6 +36,7 @@ class ExtractionResponse(BaseModel):
 
 class ActivityInput(BaseModel):
     sentence: str
+    date: str | None = None
 
 
 class SignInInput(BaseModel):
@@ -47,11 +48,11 @@ class SignUpInput(BaseModel):
     username: str
     password: str
     weight_kg: float
-    target_weight_kg: float
+    target_weight_kg: float | None = None
     height_cm: float
     gender: str  # male | female | other
     activity_level: str  # sedentary | low | moderate | high | very_high
-    goal:str
+    goal: str | None = None
 
 
 def total_macros(log: HealthLog) -> dict:
@@ -64,4 +65,3 @@ def total_macros(log: HealthLog) -> dict:
         "saturated_fat": sum(f.saturated_fat for f in log.foods),
         "sodium": sum(f.sodium for f in log.foods),
     }
-

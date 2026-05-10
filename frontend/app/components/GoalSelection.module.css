@@ -12,6 +12,13 @@
   color: #111827;
 }
 
+.subheading {
+  margin: -0.6rem 0 0;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  color: #4b5563;
+}
+
 .goalGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -87,9 +94,19 @@
 }
 
 .fieldLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   font-size: 0.75rem;
   font-weight: 700;
   color: #374151;
+}
+
+.fieldLabel span {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #6b7280;
 }
 
 .fieldControl {
