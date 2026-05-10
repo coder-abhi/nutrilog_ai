@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import styles from "./WeightTracker.module.css";
 import Header from "./Header";
@@ -9,6 +8,14 @@ import Header from "./Header";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 type WeightEntry = { value_kg: number; recorded_at: string | null };
+type RangeKey = "week" | "month" | "year" | "all";
+
+const RANGE_OPTIONS: { key: RangeKey; label: string; days?: number }[] = [
+  { key: "week", label: "Week", days: 7 },
+  { key: "month", label: "Month", days: 30 },
+  { key: "year", label: "Year", days: 365 },
+  { key: "all", label: "All time" },
+];
 
 export default function WeightTracker() {
   const { user, signOut, getAuthHeaders } = useAuth();
@@ -19,6 +26,7 @@ export default function WeightTracker() {
     const d = new Date();
     return d.toISOString().slice(0, 10);
   });
+  const [viewRange, setViewRange] = useState<RangeKey>("month");
   const [logWeightSubmitting, setLogWeightSubmitting] = useState(false);
   const [logWeightError, setLogWeightError] = useState<string | null>(null);
 
@@ -46,22 +54,43 @@ export default function WeightTracker() {
     fetchWeights();
   }, [fetchWeights]);
 
-  const weightsOrdered = [...entries].reverse();
-  const currentWeightKg = entries[0]?.value_kg ?? user?.weight_kg ?? 0;
+  const normalizedEntries = useMemo(() => {
+    return entries
+      .map((entry, index) => {
+        const time = entry.recorded_at ? new Date(entry.recorded_at).getTime() : Number.NaN;
+        return {
+          ...entry,
+          sortTime: Number.isNaN(time) ? index : time,
+          hasDate: !Number.isNaN(time),
+        };
+      })
+      .sort((a, b) => a.sortTime - b.sortTime);
+  }, [entries]);
+
+  const visibleEntries = useMemo(() => {
+    const option = RANGE_OPTIONS.find((item) => item.key === viewRange);
+    if (!option?.days) return normalizedEntries;
+
+    const cutoff = Date.now() - option.days * 24 * 60 * 60 * 1000;
+    return normalizedEntries.filter((entry) => entry.hasDate && entry.sortTime >= cutoff);
+  }, [normalizedEntries, viewRange]);
+
+  const latestEntry = normalizedEntries[normalizedEntries.length - 1];
+  const currentWeightKg = latestEntry?.value_kg ?? user?.weight_kg ?? 0;
   const targetWeightKg =
     user?.target_weight_kg != null && user.target_weight_kg > 0
       ? user.target_weight_kg
       : Math.max(0, currentWeightKg - 5);
 
-  const allValues = weightsOrdered.length
-    ? weightsOrdered.map((e) => e.value_kg)
+  const visibleValues = visibleEntries.length
+    ? visibleEntries.map((e) => e.value_kg)
     : (user?.weight_kg ? [user.weight_kg] : []);
-  const max = Math.max(...allValues, targetWeightKg, 1);
-  const min = Math.min(...allValues, targetWeightKg, 0);
+  const max = Math.max(...visibleValues, targetWeightKg, 1);
+  const min = Math.min(...visibleValues, targetWeightKg, 0);
 
-  const points = weightsOrdered
+  const points = visibleEntries
     .map((p, index) => {
-      const x = (weightsOrdered.length - 1 ? index / (weightsOrdered.length - 1) : 0) * 100;
+      const x = (visibleEntries.length - 1 ? index / (visibleEntries.length - 1) : 0) * 100;
       const y = ((max - p.value_kg) / (max - min || 1)) * 100;
       return `${x},${y}`;
     })
@@ -178,32 +207,57 @@ export default function WeightTracker() {
           <header className={styles.chartHeader}>
             <h2 className={styles.sectionTitle}>Weight Tracker</h2>
             <div className={styles.chipRow}>
-              <button className={styles.chip}>Week</button>
-              <button className={styles.chipActive}>Month</button>
-              <button className={styles.chip}>Year</button>
-              <button className={styles.chip}>All time</button>
+              {RANGE_OPTIONS.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  className={viewRange === option.key ? styles.chipActive : styles.chip}
+                  onClick={() => setViewRange(option.key)}
+                >
+                  {option.label}
+                </button>
+              ))}
             </div>
           </header>
 
           <div className={styles.chartWrapper}>
-            <svg
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-              className={styles.chartSvg}
-            >
-              <line
-                x1="0"
-                x2="100"
-                y1={targetY}
-                y2={targetY}
-                className={styles.targetLine}
-              />
-              <polyline
-                fill="none"
-                points={points}
-                className={styles.weightLine}
-              />
-            </svg>
+            {visibleEntries.length ? (
+              <svg
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                className={styles.chartSvg}
+              >
+                <line
+                  x1="0"
+                  x2="100"
+                  y1={targetY}
+                  y2={targetY}
+                  className={styles.targetLine}
+                />
+                <polyline
+                  fill="none"
+                  points={points}
+                  className={styles.weightLine}
+                />
+                {visibleEntries.map((entry, index) => {
+                  const cx = (visibleEntries.length - 1 ? index / (visibleEntries.length - 1) : 0.5) * 100;
+                  const cy = ((max - entry.value_kg) / (max - min || 1)) * 100;
+                  return (
+                    <circle
+                      key={`${entry.recorded_at ?? "point"}-${index}`}
+                      cx={cx}
+                      cy={cy}
+                      r="1.5"
+                      className={styles.weightPoint}
+                    />
+                  );
+                })}
+              </svg>
+            ) : (
+              <div className={styles.emptyChart}>
+                No entries in this range yet.
+              </div>
+            )}
           </div>
         </section>
 
@@ -230,4 +284,3 @@ export default function WeightTracker() {
     </div>
   );
 }
-

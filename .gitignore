@@ -80,6 +80,8 @@ backend/.coverage
 backend/htmlcov/
 *.pyc
 backend/*.log
+backend/nutrilog_info.log
+
 
 # Virtual environments
 backend/venv/

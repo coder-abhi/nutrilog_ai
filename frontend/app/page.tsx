@@ -233,6 +233,8 @@ function DashboardContent() {
         </section>
       </main>
 
+    <section className={styles.footerInput}>
+
       <BottomInput
         onCaloriesCalculated={(data) => {
           setSummaryData((prev) => ({
@@ -246,7 +248,8 @@ function DashboardContent() {
           }));
           fetchTodaySummary();
         }}
-      />
+        />
+        </section>
     </div>
   );
 }

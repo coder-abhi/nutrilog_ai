@@ -212,6 +212,8 @@
   background: #e5e7eb;
   border-radius: 999px;
   padding: 0.2rem;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .chip,
@@ -249,6 +251,22 @@
 .weightLine {
   stroke: #2563eb;
   stroke-width: 1.5;
+}
+
+.weightPoint {
+  fill: #2563eb;
+  stroke: #ffffff;
+  stroke-width: 0.8;
+}
+
+.emptyChart {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed #d1d5db;
+  border-radius: 0.9rem;
+  color: #4b5563;
+  font-size: 0.9rem;
 }
 
 .entriesSection {
@@ -291,6 +309,22 @@
     padding-inline: 1rem;
   }
 
+  .chartHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .chipRow {
+    width: 100%;
+  }
+
+  .chip,
+  .chipActive {
+    flex: 1;
+    white-space: nowrap;
+    padding-inline: 0.65rem;
+  }
+
   .logWeightRow {
     flex-direction: column;
     align-items: stretch;
@@ -300,4 +334,3 @@
     align-self: flex-start;
   }
 }
-

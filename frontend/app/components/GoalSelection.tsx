@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import styles from "./GoalSelection.module.css";
 
 
 type GoalValue =
@@ -10,10 +11,6 @@ type GoalValue =
   | "hair_growth"
   | "energy_boost"
   | "pcos";
-
-interface Props {
-  onChange: (value: GoalValue) => void;
-}
 
 const GOALS = [
   {
@@ -48,11 +45,26 @@ const GOALS = [
   },
 ];
 
-export default function GoalSelection({ onGoalChange, onWeightChange, onTargetWeightChange, onHeightChange, currWeight, currTargetWeight, currHeight}) {
+type GoalSelectionProps = {
+  onGoalChange: (value: GoalValue) => void;
+  onWeightChange: (value: string) => void;
+  onTargetWeightChange: (value: string) => void;
+  onHeightChange: (value: string) => void;
+  currWeight: string;
+  currTargetWeight: string;
+  currHeight: string;
+};
+
+export default function GoalSelection({
+  onGoalChange,
+  onWeightChange,
+  onTargetWeightChange,
+  onHeightChange,
+  currWeight,
+  currTargetWeight,
+  currHeight,
+}: GoalSelectionProps) {
   const [selectedGoal, setSelectedGoal] = useState<GoalValue | null>(null);
-  const [currentWeight, setCurrentWeight] = useState("");
-  const [targetWeight, setTargetWeight] = useState("");
-  const [height, setHeight] = useState("");
 
   const handleSelect = (value: GoalValue) => {
     setSelectedGoal(value);
@@ -63,36 +75,27 @@ export default function GoalSelection({ onGoalChange, onWeightChange, onTargetWe
     selectedGoal === "muscle_gain" || selectedGoal === "weight_loss";
 
   return (
-    <div className="w-full max-w-md mx-auto space-y-6">
-      <h2 className="text-xl font-semibold text-gray-900">
+    <div className={styles.goalPanel}>
+      <h2 className={styles.heading}>
         Choose your goal
       </h2>
 
-      {/* Grid */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className={styles.goalGrid}>
         {GOALS.map((goal) => {
           const isActive = selectedGoal === goal.value;
 
           return (
-            
             <button
               key={goal.value}
               type="button"
               onClick={() => handleSelect(goal.value as GoalValue)}
-              className={`
-                relative rounded-xl border p-4 text-left transition
-                ${
-                  isActive
-                    ? "border-green-500 bg-green-50"
-                    : "border-gray-200 bg-white"
-                }
-              `}
+              className={`${styles.goalCard} ${isActive ? styles.goalCardActive : ""}`}
+              aria-pressed={isActive}
             >
-              
-              <h3 className="font-medium text-gray-900 text-sm">
+              <span className={styles.goalTitle}>
                 {goal.title}
-              </h3>
-              <p className="text-xs text-gray-500 mt-1">
+              </span>
+              <p className={styles.goalDescription}>
                 {goal.description}
               </p>
             </button>
@@ -100,50 +103,58 @@ export default function GoalSelection({ onGoalChange, onWeightChange, onTargetWe
         })}
       </div>
 
-      {/* Conditional Fields */}
       {showBodyFields && (
-        <div className="space-y-4 pt-2 text-black">
-          <div>
-            <label className="block text-sm text-gray-700 mb-1">
+        <div className={styles.bodyPanel}>
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
               Current weight (kg)
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              value={currWeight}
-              onChange={(e) =>  onWeightChange(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-              placeholder="e.g. 72"
-            />
-          </div>
+            </span>
+            <span className={styles.fieldControl}>
+              <input
+                type="number"
+                step="0.1"
+                value={currWeight}
+                onChange={(e) => onWeightChange(e.target.value)}
+                className={styles.fieldInput}
+                placeholder="e.g. 72"
+              />
+              <span className={styles.unit}>kg</span>
+            </span>
+          </label>
 
-          <div>
-            <label className="block text-sm text-gray-700 mb-1">
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
               Target weight (kg)
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              value={currTargetWeight}
-              onChange={(e) => onTargetWeightChange(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-              placeholder="e.g. 78"
-            />
-          </div>
+            </span>
+            <span className={styles.fieldControl}>
+              <input
+                type="number"
+                step="0.1"
+                value={currTargetWeight}
+                onChange={(e) => onTargetWeightChange(e.target.value)}
+                className={styles.fieldInput}
+                placeholder="e.g. 78"
+              />
+              <span className={styles.unit}>kg</span>
+            </span>
+          </label>
 
-          <div>
-            <label className="block text-sm text-gray-700 mb-1">
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
               Height (cm)
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              value={currHeight}
-              onChange={(e) => onHeightChange(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-              placeholder="e.g. 175"
-            />
-          </div>
+            </span>
+            <span className={styles.fieldControl}>
+              <input
+                type="number"
+                step="0.1"
+                value={currHeight}
+                onChange={(e) => onHeightChange(e.target.value)}
+                className={styles.fieldInput}
+                placeholder="e.g. 175"
+              />
+              <span className={styles.unit}>cm</span>
+            </span>
+          </label>
         </div>
       )}
     </div>

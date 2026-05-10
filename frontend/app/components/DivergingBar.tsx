@@ -1,14 +1,20 @@
 // components/DivergingBar.jsx
 "use client";
 
-const DivergingBar = ({ consumed, burned, passiveBurn }) => {
+type DivergingBarProps = {
+  consumed: number;
+  burned: number;
+  passiveBurn: number;
+};
+
+const DivergingBar = ({ consumed, burned, passiveBurn }: DivergingBarProps) => {
     const totalBurned = burned + passiveBurn;
     const net = consumed - totalBurned;
     const maxRange = 1000;
     const percentage = Math.min(Math.abs(net) / maxRange * 50, 50);
     const isDeficit = net < 0;
   
-    const getStatus = (net) => {
+    const getStatus = (net: number) => {
       if (net < -500) return "Deep deficit — fat burn mode 🔥"
       if (net < 0) return "In deficit — on track 💪"
       if (net === 0) return "Perfectly balanced ⚖️"
