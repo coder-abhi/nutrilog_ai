@@ -1,0 +1,281 @@
+.page {
+  min-height: 100vh;
+  background: #f6f8fb;
+}
+
+.main {
+  padding: 1.5rem 1rem 3rem;
+}
+
+.titleRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.titleRow h1 {
+  margin: 0 0 0.25rem;
+  font-size: clamp(1.7rem, 2.4vw, 2.3rem);
+  color: #111827;
+}
+
+.titleRow p,
+.target {
+  margin: 0;
+  color: #4b5563;
+  font-size: 0.92rem;
+}
+
+.primaryAction,
+.addCard {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  text-decoration: none;
+  color: #ffffff;
+  background: #111827;
+  border-radius: 0.75rem;
+  font-weight: 700;
+}
+
+.primaryAction {
+  min-height: 2.5rem;
+  padding: 0 0.9rem;
+  white-space: nowrap;
+}
+
+.selector {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+  padding: 0.8rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  background: #ffffff;
+}
+
+.selectorItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  color: #111827;
+  font-size: 0.88rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 1rem;
+}
+
+.card,
+.emptyState,
+.addCard {
+  min-height: 19rem;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.card {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.emptyState {
+  display: grid;
+  place-items: center;
+  color: #4b5563;
+}
+
+.addCard {
+  color: #111827;
+  background: #ffffff;
+  border-style: dashed;
+}
+
+.cardTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.cardTop h2 {
+  margin: 0.35rem 0 0;
+  font-size: 1.2rem;
+  color: #111827;
+  overflow-wrap: anywhere;
+}
+
+.typePill {
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #2563eb;
+}
+
+.streak {
+  min-width: 4rem;
+  height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.booleanGraph {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+  min-height: 6rem;
+  align-items: end;
+}
+
+.booleanDay {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.booleanDone,
+.booleanMiss {
+  width: 100%;
+  min-height: 3.3rem;
+  display: grid;
+  place-items: center;
+  border-radius: 0.6rem;
+  font-weight: 800;
+  font-size: 0.78rem;
+}
+
+.booleanDone {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.booleanMiss {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.booleanDay small,
+.barSlot small {
+  color: #64748b;
+  font-size: 0.68rem;
+}
+
+.barGraph {
+  --avg-line: 50%;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+  min-height: 9rem;
+  padding-top: 0.4rem;
+}
+
+.avgLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--avg-line);
+  border-top: 2px dashed #ef4444;
+}
+
+.barSlot {
+  display: grid;
+  grid-template-rows: 1fr 1rem 1rem;
+  gap: 0.25rem;
+  align-items: end;
+  text-align: center;
+  z-index: 1;
+}
+
+.barTrack {
+  height: 6rem;
+  display: flex;
+  align-items: flex-end;
+  border-radius: 0.55rem;
+  background: #edf2f7;
+  overflow: hidden;
+}
+
+.barFill {
+  width: 100%;
+  min-height: 2px;
+  background: #2563eb;
+  border-radius: 0.55rem 0.55rem 0 0;
+}
+
+.barSlot strong {
+  font-size: 0.75rem;
+  color: #111827;
+}
+
+.actions,
+.numericLog {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+.actions button,
+.numericLog button,
+.numericLog input {
+  min-height: 2.4rem;
+  border-radius: 0.65rem;
+  border: 1px solid #d1d5db;
+  font: inherit;
+}
+
+.actions button,
+.numericLog button {
+  flex: 1;
+  background: #111827;
+  color: #ffffff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.actions button:disabled,
+.numericLog button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.numericLog input {
+  width: min(10rem, 55%);
+  padding: 0 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .main {
+    padding-inline: 2rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .titleRow {
+    flex-direction: column;
+  }
+
+  .primaryAction {
+    width: 100%;
+  }
+}

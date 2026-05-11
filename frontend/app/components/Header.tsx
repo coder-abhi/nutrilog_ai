@@ -22,6 +22,9 @@ export default function Header() {
           <Link href="/calendar" className={pathname === "/calendar" ? styles.navLinkActive : styles.navLink}>
             Calendar
           </Link>
+          <Link href="/tracker" className={pathname.startsWith("/tracker") ? styles.navLinkActive : styles.navLink}>
+            Tracker
+          </Link>
           <div className={styles.userSection}>
             <span className={styles.userName}>{user?.username}</span>
             <button

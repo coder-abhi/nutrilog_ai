@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from auth import create_access_token, get_current_user
 
-from models import Activity, ActivityInput, ExtractionResponse, SignInInput, SignUpInput
+from models import Activity, ActivityInput, ExtractionResponse, SignInInput, SignUpInput, TrackerCardInput, TrackerEntryInput, TrackerVisibilityInput
 from utils import aggregate_summary
 from met_engine import calculate_realtime_burn
 
@@ -32,6 +32,12 @@ from crud import (
     get_user_by_username_and_password,
     get_weight_entries,
     create_weight_entry,
+    create_tracker_card,
+    get_tracker_cards,
+    get_tracker_card,
+    get_tracker_entries,
+    set_tracker_card_visibility,
+    upsert_tracker_entry,
 )
 
 
@@ -254,6 +260,171 @@ def add_weight_entry(data: WeightEntryInput, db: Session = Depends(get_db), curr
     return {"value_kg": entry.value_kg, "recorded_at": entry.recorded_at.isoformat() if entry.recorded_at else None}
 
 
+def _tracker_card_payload(card, entries_by_card=None):
+    card_entries = (entries_by_card or {}).get(card.id, [])
+    return {
+        "id": card.id,
+        "name": card.name,
+        "value_type": card.value_type,
+        "target_days_per_week": card.target_days_per_week,
+        "description": card.description or "",
+        "is_visible": bool(card.is_visible),
+        "created_at": card.created_at.isoformat() if card.created_at else None,
+        "entries": [
+            {
+                "id": entry.id,
+                "date": entry.entry_date.isoformat(),
+                "value": entry.value,
+                "raw_text": entry.raw_text or "",
+            }
+            for entry in card_entries
+        ],
+    }
+
+
+@app.get("/tracker_cards")
+def list_tracker_cards(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    from datetime import date, timedelta
+
+    cards = get_tracker_cards(db, current_user.username)
+    end_date = date.today()
+    start_date = end_date - timedelta(days=89)
+    entries = get_tracker_entries(db, current_user.username, start_date=start_date, end_date=end_date)
+    entries_by_card = {}
+    for entry in entries:
+        entries_by_card.setdefault(entry.tracker_id, []).append(entry)
+    return [_tracker_card_payload(card, entries_by_card) for card in cards]
+
+
+@app.post("/tracker_cards")
+def add_tracker_card(data: TrackerCardInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    name = data.name.strip()
+    value_type = data.value_type.strip().lower()
+    if not name:
+        raise HTTPException(status_code=400, detail="Tracker name is required.")
+    if value_type not in {"boolean", "numeric"}:
+        raise HTTPException(status_code=400, detail="value_type must be boolean or numeric.")
+    if data.target_days_per_week < 1 or data.target_days_per_week > 7:
+        raise HTTPException(status_code=400, detail="target_days_per_week must be between 1 and 7.")
+    card = create_tracker_card(
+        db,
+        current_user.username,
+        name=name,
+        value_type=value_type,
+        target_days_per_week=data.target_days_per_week,
+        description=data.description,
+    )
+    return _tracker_card_payload(card)
+
+
+@app.patch("/tracker_cards/{tracker_id}/visibility")
+def update_tracker_visibility(tracker_id: str, data: TrackerVisibilityInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    card = set_tracker_card_visibility(db, current_user.username, tracker_id, data.is_visible)
+    if card is None:
+        raise HTTPException(status_code=404, detail="Tracker card not found.")
+    return _tracker_card_payload(card)
+
+
+@app.post("/tracker_entries")
+def add_tracker_entry(data: TrackerEntryInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    from datetime import datetime as dt, date
+
+    card = get_tracker_card(db, current_user.username, data.tracker_id)
+    if card is None:
+        raise HTTPException(status_code=404, detail="Tracker card not found.")
+    if data.date:
+        try:
+            entry_date = dt.strptime(data.date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+    else:
+        entry_date = date.today()
+    value = 1 if card.value_type == "boolean" and data.value > 0 else data.value
+    entry = upsert_tracker_entry(db, current_user.username, card.id, entry_date, value)
+    return {
+        "id": entry.id,
+        "tracker_id": entry.tracker_id,
+        "date": entry.entry_date.isoformat(),
+        "value": entry.value,
+    }
+
+
+def _extract_tracker_updates(sentence: str, db: Session, user_id: str, target_date):
+    cards = get_tracker_cards(db, user_id)
+    if not cards:
+        return []
+
+    cards_prompt = [
+        {
+            "id": card.id,
+            "name": card.name,
+            "value_type": card.value_type,
+            "description": card.description or card.name,
+        }
+        for card in cards
+    ]
+    system_prompt = f"""
+You extract habit tracker updates from a user's health log sentence.
+Return ONLY valid JSON. No markdown, no explanations.
+
+Tracker cards:
+{json.dumps(cards_prompt)}
+
+Output format:
+{{
+  "updates": [
+    {{
+      "tracker_id": string,
+      "value": number,
+      "confidence": number
+    }}
+  ]
+}}
+
+Rules:
+- Match only tracker cards clearly mentioned or implied by the sentence.
+- For boolean trackers, use value 1 when the user did it/ate it, and 0 only when the user clearly says they did not.
+- For numeric trackers, extract the numeric count or amount. Example: "20 pushups" -> 20.
+- Use each card's description to understand synonyms.
+- If nothing matches, return {{"updates": []}}.
+- confidence must be between 0 and 1.
+"""
+    try:
+        response = measure_openai_latency(
+            client.chat.completions.create,
+            model="gpt-4.1",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": sentence},
+            ],
+        )
+        payload = json.loads(response.choices[0].message.content)
+    except Exception as exc:
+        logging.warning(f"Tracker extraction failed: {exc}")
+        return []
+
+    updates = []
+    card_by_id = {card.id: card for card in cards}
+    for update in payload.get("updates", []):
+        tracker_id = update.get("tracker_id")
+        card = card_by_id.get(tracker_id)
+        if card is None:
+            continue
+        confidence = float(update.get("confidence", 0))
+        if confidence < 0.55:
+            continue
+        raw_value = float(update.get("value", 0))
+        value = 1 if card.value_type == "boolean" and raw_value > 0 else raw_value
+        entry = upsert_tracker_entry(db, user_id, tracker_id, target_date, value, raw_text=sentence)
+        updates.append({
+            "tracker_id": tracker_id,
+            "name": card.name,
+            "value": entry.value,
+            "date": entry.entry_date.isoformat(),
+        })
+    return updates
+
+
 @app.post("/log_input")
 def analyze_food(data: ActivityInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     from datetime import datetime as dt, timedelta
@@ -376,5 +547,8 @@ Rules:
         insulin_curve=json.dumps([point.model_dump() for point in parsed.insulin_curve])
     )
 
+    tracker_date = (log_timestamp or dt.now()).date()
+    tracker_updates = _extract_tracker_updates(data.sentence, db, current_user.username, tracker_date)
+    summary["tracker_updates"] = tracker_updates
 
     return summary

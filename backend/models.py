@@ -45,6 +45,23 @@ class ActivityInput(BaseModel):
     log_time_minutes: int | None = None
 
 
+class TrackerCardInput(BaseModel):
+    name: str
+    value_type: str
+    target_days_per_week: int
+    description: str | None = None
+
+
+class TrackerVisibilityInput(BaseModel):
+    is_visible: bool
+
+
+class TrackerEntryInput(BaseModel):
+    tracker_id: str
+    value: float
+    date: str | None = None
+
+
 class SignInInput(BaseModel):
     username: str
     password: str

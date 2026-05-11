@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, Nullable, String, Float, DateTime, ForeignKey, Text, create_engine, engine, text
+from sqlalchemy import Column, Integer, Nullable, String, Float, DateTime, Date, Boolean, ForeignKey, Text, create_engine, engine, text
 from sqlalchemy.orm import relationship, declarative_base, sessionmaker
 import uuid
 import hashlib
@@ -55,6 +55,35 @@ class WeightEntryDB(Base):
     user_id = Column(String, nullable=False, index=True)
     value_kg = Column(Float, nullable=False)
     recorded_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class TrackerCardDB(Base):
+    __tablename__ = "tracker_cards"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    value_type = Column(String, nullable=False)  # boolean | numeric
+    target_days_per_week = Column(Integer, nullable=False, default=7)
+    description = Column(Text, nullable=True)
+    is_visible = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    entries = relationship("TrackerEntryDB", back_populates="card", cascade="all, delete")
+
+
+class TrackerEntryDB(Base):
+    __tablename__ = "tracker_entries"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tracker_id = Column(String, ForeignKey("tracker_cards.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(String, nullable=False, index=True)
+    entry_date = Column(Date, nullable=False, index=True)
+    value = Column(Float, nullable=False)
+    raw_text = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    card = relationship("TrackerCardDB", back_populates="entries")
 
 
 class HealthLogDB(Base):
@@ -233,6 +262,82 @@ def get_weight_entries(session, user_id: str, limit: int = 100):
         .limit(limit)
         .all()
     )
+
+
+def create_tracker_card(session, user_id: str, name: str, value_type: str, target_days_per_week: int, description: str | None = None):
+    card = TrackerCardDB(
+        user_id=user_id,
+        name=name.strip(),
+        value_type=value_type,
+        target_days_per_week=target_days_per_week,
+        description=description,
+        is_visible=True,
+    )
+    session.add(card)
+    session.commit()
+    return card
+
+
+def get_tracker_cards(session, user_id: str):
+    return (
+        session.query(TrackerCardDB)
+        .filter(TrackerCardDB.user_id == user_id)
+        .order_by(TrackerCardDB.created_at.asc())
+        .all()
+    )
+
+
+def get_tracker_card(session, user_id: str, tracker_id: str):
+    return (
+        session.query(TrackerCardDB)
+        .filter(TrackerCardDB.user_id == user_id, TrackerCardDB.id == tracker_id)
+        .first()
+    )
+
+
+def set_tracker_card_visibility(session, user_id: str, tracker_id: str, is_visible: bool):
+    card = get_tracker_card(session, user_id, tracker_id)
+    if card is None:
+        return None
+    card.is_visible = is_visible
+    session.commit()
+    return card
+
+
+def upsert_tracker_entry(session, user_id: str, tracker_id: str, entry_date, value: float, raw_text: str | None = None):
+    entry = (
+        session.query(TrackerEntryDB)
+        .filter(
+            TrackerEntryDB.user_id == user_id,
+            TrackerEntryDB.tracker_id == tracker_id,
+            TrackerEntryDB.entry_date == entry_date,
+        )
+        .first()
+    )
+    if entry is None:
+        entry = TrackerEntryDB(
+            user_id=user_id,
+            tracker_id=tracker_id,
+            entry_date=entry_date,
+            value=value,
+            raw_text=raw_text,
+        )
+        session.add(entry)
+    else:
+        entry.value = value
+        entry.raw_text = raw_text or entry.raw_text
+        entry.created_at = datetime.utcnow()
+    session.commit()
+    return entry
+
+
+def get_tracker_entries(session, user_id: str, start_date=None, end_date=None):
+    query = session.query(TrackerEntryDB).filter(TrackerEntryDB.user_id == user_id)
+    if start_date is not None:
+        query = query.filter(TrackerEntryDB.entry_date >= start_date)
+    if end_date is not None:
+        query = query.filter(TrackerEntryDB.entry_date <= end_date)
+    return query.order_by(TrackerEntryDB.entry_date.asc()).all()
 
 
 # engine = create_engine("sqlite:///./local.db", connect_args={"check_same_thread": False})

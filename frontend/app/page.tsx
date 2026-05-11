@@ -309,17 +309,19 @@ function DashboardContent() {
           <div className={styles.card}>
             <div className={styles.cardLabel}>Net calories</div>
             <div className={styles.cardNumber}>{netCalories}</div>
-            <div className={styles.cardMeta}>
-              <span>Food</span>
-              <span>{data.caloriesIntake} kcal</span>
-            </div>
-            <div className={styles.cardMeta}>
-              <span>Exercise</span>
-              <span>{data.caloriesBurned} kcal</span>
-            </div>
-            <div className={styles.cardMeta}>
-              <span>Passive burn</span>
-              <span>{passiveCaloriesForRange} kcal</span>
+            <div className={styles.macrosRow}>
+              <div className={styles.macroChip}>
+                <span>Food intake</span>
+                <strong>{data.caloriesIntake} kcal</strong>
+              </div>
+              <div className={styles.macroChip}>
+                <span>Resting flame</span>
+                <strong>{passiveCaloriesForRange} kcal</strong>
+              </div>
+              <div className={styles.macroChip}>
+                <span>Active burn</span>
+                <strong>{data.caloriesBurned} kcal</strong>
+              </div>
             </div>
           </div>
 
