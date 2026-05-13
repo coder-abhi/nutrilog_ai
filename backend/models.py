@@ -52,6 +52,12 @@ class TrackerCardInput(BaseModel):
     description: str | None = None
 
 
+class TrackerCardUpdateInput(BaseModel):
+    name: str
+    target_days_per_week: int
+    description: str | None = None
+
+
 class TrackerVisibilityInput(BaseModel):
     is_visible: bool
 

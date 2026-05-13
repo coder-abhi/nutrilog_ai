@@ -138,6 +138,29 @@
   color: #c2410c;
 }
 
+.cardTools {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.iconButton {
+  width: 2.25rem;
+  height: 2.25rem;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.65rem;
+  background: #ffffff;
+  color: #111827;
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  background: #f8fafc;
+}
+
 .booleanGraph {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -160,8 +183,6 @@
   display: grid;
   place-items: center;
   border-radius: 0.6rem;
-  font-weight: 800;
-  font-size: 0.78rem;
 }
 
 .booleanDone {
@@ -175,57 +196,102 @@
 }
 
 .booleanDay small,
-.barSlot small {
+.xAxis span {
   color: #64748b;
   font-size: 0.68rem;
 }
 
-.barGraph {
+.numericGraph {
+  display: grid;
+  grid-template-columns: 2rem 1fr;
+  gap: 0.45rem;
+  min-height: 9.5rem;
+}
+
+.yAxis {
+  height: 7rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-self: start;
+  padding-top: 0.1rem;
+  color: #64748b;
+  font-size: 0.68rem;
+  text-align: right;
+}
+
+.plotWrap {
+  min-width: 0;
+}
+
+.plotArea {
   --avg-line: 50%;
   position: relative;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 0.35rem;
-  min-height: 9rem;
-  padding-top: 0.4rem;
+  align-items: end;
+  gap: 0.5rem;
+  height: 7rem;
+  padding-right: 1.65rem;
+  border-left: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .avgLine {
   position: absolute;
   left: 0;
+  right: 1.65rem;
+  top: var(--avg-line);
+  border-top: 1.5px dashed #ef4444;
+  pointer-events: none;
+}
+
+.avgLabel {
+  position: absolute;
   right: 0;
   top: var(--avg-line);
-  border-top: 2px dashed #ef4444;
+  transform: translateY(-50%);
+  min-width: 1.35rem;
+  color: #b91c1c;
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-align: right;
 }
 
 .barSlot {
-  display: grid;
-  grid-template-rows: 1fr 1rem 1rem;
-  gap: 0.25rem;
-  align-items: end;
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: stretch;
   text-align: center;
   z-index: 1;
-}
-
-.barTrack {
-  height: 6rem;
-  display: flex;
-  align-items: flex-end;
-  border-radius: 0.55rem;
-  background: #edf2f7;
-  overflow: hidden;
 }
 
 .barFill {
   width: 100%;
   min-height: 2px;
-  background: #2563eb;
+  background: linear-gradient(180deg, #38bdf8 0%, #2563eb 100%);
   border-radius: 0.55rem 0.55rem 0 0;
 }
 
 .barSlot strong {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translate(-50%, -0.2rem);
   font-size: 0.75rem;
   color: #111827;
+}
+
+.xAxis {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.5rem;
+  padding-right: 1.65rem;
+  margin-top: 0.35rem;
+  text-align: center;
 }
 
 .actions,
@@ -262,6 +328,67 @@
 .numericLog input {
   width: min(10rem, 55%);
   padding: 0 0.75rem;
+}
+
+.editForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.editForm label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  color: #111827;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.editForm input,
+.editForm select,
+.editForm textarea {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  font: inherit;
+  font-weight: 500;
+  color: #111827;
+  background: #ffffff;
+}
+
+.editForm textarea {
+  resize: vertical;
+}
+
+.editActions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+.editActions button {
+  flex: 1;
+  min-height: 2.4rem;
+  border-radius: 0.65rem;
+  border: 1px solid #111827;
+  background: #111827;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.editActions .secondaryButton {
+  background: #ffffff;
+  color: #111827;
+  border-color: #d1d5db;
+}
+
+.editActions button:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 @media (min-width: 768px) {

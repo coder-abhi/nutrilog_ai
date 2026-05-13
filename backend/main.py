@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from auth import create_access_token, get_current_user
 
-from models import Activity, ActivityInput, ExtractionResponse, SignInInput, SignUpInput, TrackerCardInput, TrackerEntryInput, TrackerVisibilityInput
+from models import Activity, ActivityInput, ExtractionResponse, SignInInput, SignUpInput, TrackerCardInput, TrackerCardUpdateInput, TrackerEntryInput, TrackerVisibilityInput
 from utils import aggregate_summary
 from met_engine import calculate_realtime_burn
 
@@ -37,6 +37,7 @@ from crud import (
     get_tracker_card,
     get_tracker_entries,
     set_tracker_card_visibility,
+    update_tracker_card,
     upsert_tracker_entry,
 )
 
@@ -317,6 +318,26 @@ def add_tracker_card(data: TrackerCardInput, db: Session = Depends(get_db), curr
     return _tracker_card_payload(card)
 
 
+@app.patch("/tracker_cards/{tracker_id}")
+def edit_tracker_card(tracker_id: str, data: TrackerCardUpdateInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Tracker name is required.")
+    if data.target_days_per_week < 1 or data.target_days_per_week > 7:
+        raise HTTPException(status_code=400, detail="target_days_per_week must be between 1 and 7.")
+    card = update_tracker_card(
+        db,
+        current_user.username,
+        tracker_id,
+        name=name,
+        target_days_per_week=data.target_days_per_week,
+        description=data.description,
+    )
+    if card is None:
+        raise HTTPException(status_code=404, detail="Tracker card not found.")
+    return _tracker_card_payload(card)
+
+
 @app.patch("/tracker_cards/{tracker_id}/visibility")
 def update_tracker_visibility(tracker_id: str, data: TrackerVisibilityInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     card = set_tracker_card_visibility(db, current_user.username, tracker_id, data.is_visible)
@@ -340,7 +361,7 @@ def add_tracker_entry(data: TrackerEntryInput, db: Session = Depends(get_db), cu
     else:
         entry_date = date.today()
     value = 1 if card.value_type == "boolean" and data.value > 0 else data.value
-    entry = upsert_tracker_entry(db, current_user.username, card.id, entry_date, value)
+    entry = upsert_tracker_entry(db, current_user.username, card.id, entry_date, value, add_to_existing=card.value_type == "numeric")
     return {
         "id": entry.id,
         "tracker_id": entry.tracker_id,
@@ -415,7 +436,7 @@ Rules:
             continue
         raw_value = float(update.get("value", 0))
         value = 1 if card.value_type == "boolean" and raw_value > 0 else raw_value
-        entry = upsert_tracker_entry(db, user_id, tracker_id, target_date, value, raw_text=sentence)
+        entry = upsert_tracker_entry(db, user_id, tracker_id, target_date, value, raw_text=sentence, add_to_existing=card.value_type == "numeric")
         updates.append({
             "tracker_id": tracker_id,
             "name": card.name,

@@ -1,6 +1,7 @@
 from datetime import datetime
 from sqlalchemy import Column, Integer, Nullable, String, Float, DateTime, Date, Boolean, ForeignKey, Text, create_engine, engine, text
 from sqlalchemy.orm import relationship, declarative_base, sessionmaker
+from pathlib import Path
 import uuid
 import hashlib
 import os
@@ -295,6 +296,17 @@ def get_tracker_card(session, user_id: str, tracker_id: str):
     )
 
 
+def update_tracker_card(session, user_id: str, tracker_id: str, name: str, target_days_per_week: int, description: str | None = None):
+    card = get_tracker_card(session, user_id, tracker_id)
+    if card is None:
+        return None
+    card.name = name.strip()
+    card.target_days_per_week = target_days_per_week
+    card.description = description
+    session.commit()
+    return card
+
+
 def set_tracker_card_visibility(session, user_id: str, tracker_id: str, is_visible: bool):
     card = get_tracker_card(session, user_id, tracker_id)
     if card is None:
@@ -304,7 +316,7 @@ def set_tracker_card_visibility(session, user_id: str, tracker_id: str, is_visib
     return card
 
 
-def upsert_tracker_entry(session, user_id: str, tracker_id: str, entry_date, value: float, raw_text: str | None = None):
+def upsert_tracker_entry(session, user_id: str, tracker_id: str, entry_date, value: float, raw_text: str | None = None, add_to_existing: bool = False):
     entry = (
         session.query(TrackerEntryDB)
         .filter(
@@ -324,7 +336,7 @@ def upsert_tracker_entry(session, user_id: str, tracker_id: str, entry_date, val
         )
         session.add(entry)
     else:
-        entry.value = value
+        entry.value = entry.value + value if add_to_existing else value
         entry.raw_text = raw_text or entry.raw_text
         entry.created_at = datetime.utcnow()
     session.commit()
@@ -340,14 +352,16 @@ def get_tracker_entries(session, user_id: str, start_date=None, end_date=None):
     return query.order_by(TrackerEntryDB.entry_date.asc()).all()
 
 
-# engine = create_engine("sqlite:///./local.db", connect_args={"check_same_thread": False})
+LOCAL_DB_PATH = Path(__file__).resolve().parent / "local.db"
+
+# engine = create_engine(f"sqlite:///{LOCAL_DB_PATH}", connect_args={"check_same_thread": False})
 
 # engine = create_engine(
 #     DATABASE_URL,
 #     connect_args={"sslmode": "require"}
 # )
 engine = create_engine(
-    "sqlite:///./local.db",
+    f"sqlite:///{LOCAL_DB_PATH}",
     connect_args={"check_same_thread": False}
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

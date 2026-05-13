@@ -1633,3 +1633,15 @@
 2026-05-12 00:36:55,983 - INFO - /passive_calorie_burned took 0.0064s
 2026-05-12 00:36:55,987 - INFO - /passive_calorie_burned took 0.0030s
 2026-05-12 00:36:55,988 - INFO - /today_summary took 0.0037s
+2026-05-13 09:28:52,668 - INFO - /tracker_cards took 0.0005s
+2026-05-13 09:28:52,669 - INFO - /tracker_cards took 0.0012s
+2026-05-13 09:28:52,704 - INFO - /tracker_cards took 0.0341s
+2026-05-13 09:28:52,708 - INFO - /tracker_cards took 0.0025s
+2026-05-13 09:28:57,948 - INFO - /today_summary took 0.0034s
+2026-05-13 09:28:57,949 - INFO - /today_summary took 0.0023s
+2026-05-13 09:28:57,968 - INFO - /today_summary took 0.0172s
+2026-05-13 09:28:57,971 - INFO - /today_summary took 0.0024s
+2026-05-13 09:28:58,653 - INFO - /tracker_cards took 0.0031s
+2026-05-13 09:28:58,656 - INFO - /tracker_cards took 0.0020s
+2026-05-13 09:29:01,669 - INFO - /tracker_entries took 0.0178s
+2026-05-13 09:29:01,677 - INFO - /tracker_cards took 0.0029s
