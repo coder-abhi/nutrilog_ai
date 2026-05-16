@@ -26,6 +26,7 @@ type AuthContextType = {
   loading: boolean;
   signIn: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signUp: (data: SignUpPayload) => Promise<{ success: boolean; error?: string }>;
+  updateProfile: (data: Omit<User, "username">) => Promise<{ success: boolean; error?: string }>;
   signOut: () => void;
   getAuthHeaders: () => Record<string, string>;
 };
@@ -109,6 +110,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [persistAuth]
   );
 
+  const updateProfile = useCallback(
+    async (data: Omit<User, "username">) => {
+      if (!token) return { success: false, error: "You are not signed in." };
+      try {
+        const res = await fetch(`${API_BASE}/profile`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(data),
+        });
+        const out = await res.json();
+        if (!res.ok) {
+          return { success: false, error: out.detail || "Profile update failed" };
+        }
+        const updatedUser = out.user as User;
+        persistAuth(updatedUser, token);
+        return { success: true };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Network error";
+        return { success: false, error: message };
+      }
+    },
+    [persistAuth, token]
+  );
+
   const signOut = useCallback(() => {
     setUser(null);
     setToken(null);
@@ -122,7 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, signIn, signUp, signOut, getAuthHeaders }}>
+    <AuthContext.Provider value={{ user, token, loading, signIn, signUp, updateProfile, signOut, getAuthHeaders }}>
       {children}
     </AuthContext.Provider>
   );

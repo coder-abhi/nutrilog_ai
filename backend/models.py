@@ -84,6 +84,15 @@ class SignUpInput(BaseModel):
     goal: str | None = None
 
 
+class ProfileUpdateInput(BaseModel):
+    weight_kg: float
+    target_weight_kg: float | None = None
+    height_cm: float
+    gender: str
+    activity_level: str
+    goal: str | None = None
+
+
 def total_macros(log: HealthLog) -> dict:
     return {
         "protein": sum(f.protein for f in log.foods),

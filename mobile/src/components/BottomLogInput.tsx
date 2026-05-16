@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/auth/AuthContext";
 import { API_BASE_URL } from "@/config/api";
@@ -22,6 +23,7 @@ function getCurrentMinutes() {
 
 export function BottomLogInput({ logDate, onLogged }: { logDate: string; onLogged: (data: LogResult) => void }) {
   const { getAuthHeaders, signOut } = useAuth();
+  const insets = useSafeAreaInsets();
   const [input, setInput] = useState("");
   const [logTimeMinutes, setLogTimeMinutes] = useState(() => getCurrentMinutes());
   const [isLoading, setIsLoading] = useState(false);
@@ -59,7 +61,7 @@ export function BottomLogInput({ logDate, onLogged }: { logDate: string; onLogge
   };
 
   return (
-    <View style={styles.footer}>
+    <View style={[styles.footer, { bottom: Math.max(insets.bottom, 14) }]}>
       {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
       {!!input.trim() && (
         <View style={styles.timeBox}>
@@ -99,16 +101,19 @@ export function BottomLogInput({ logDate, onLogged }: { logDate: string; onLogge
 const styles = StyleSheet.create({
   footer: {
     position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 18,
+    left: 12,
+    right: 12,
+    padding: 10,
     gap: 6,
     backgroundColor: "rgba(255,255,255,0.94)",
-    borderTopWidth: 1,
-    borderTopColor: colors.line,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 14,
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.16,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 18,
+    elevation: 10,
   },
   errorText: {
     color: "#b91c1c",

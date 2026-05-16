@@ -177,6 +177,21 @@ def get_user_by_username_and_password(session, username: str, password: str) -> 
     return user
 
 
+def update_user_profile(session, username: str, *, weight_kg: float, target_weight_kg: float | None, height_cm: float, gender: str, activity_level: str, goal: str | None):
+    user = get_user_by_username(session, username)
+    if user is None:
+        return None
+    user.weight_kg = weight_kg
+    user.target_weight_kg = target_weight_kg
+    user.height_cm = height_cm
+    user.gender = gender
+    user.activity_level = activity_level
+    user.goal = goal
+    session.commit()
+    session.refresh(user)
+    return user
+
+
 def create_health_log(session, user_id: str, raw_text: str, activities, foods, timestamp: datetime | None = None, insulin_curve: str | None = None):
     """
     Persist one full transaction:

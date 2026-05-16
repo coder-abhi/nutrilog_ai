@@ -40,6 +40,11 @@ function buildSmoothPath(points: { x: number; y: number }[]) {
   );
 }
 
+function getEntryKey(entry: LogEntry, index: number) {
+  const label = entry.kind === "activity" ? entry.type : entry.name;
+  return [entry.kind, entry.timestamp ?? "no-time", label, entry.quantity, entry.unit, index].join("-");
+}
+
 export default function DashboardPage() {
   return (
     <AuthGate>
@@ -170,11 +175,6 @@ function DashboardContent() {
     <GradientScreen>
       <Header />
       <ScrollView contentContainerStyle={styles.main} keyboardShouldPersistTaps="handled">
-        <View style={styles.hero}>
-          <Text style={styles.heroTitle}>Simple &amp; Easy Calorie Tracking</Text>
-          <Text style={styles.heroSubtitle}>Track your meals, macros, and progress in one clean dashboard.</Text>
-        </View>
-
         <View style={styles.topBar}>
           <View style={styles.datePill}>
             <Text style={styles.dateText}>{formatDisplayDate(selectedDate)}</Text>
@@ -261,7 +261,7 @@ function DashboardContent() {
             <Text style={styles.placeholderCard}>No entries yet. Log meals or exercise below to see them here.</Text>
           ) : (
             entries.map((entry, i) => (
-              <View key={`${entry.kind}-${entry.timestamp ?? i}`} style={[styles.foodItem, entry.kind === "activity" ? styles.activityItem : styles.foodLogItem]}>
+              <View key={getEntryKey(entry, i)} style={[styles.foodItem, entry.kind === "activity" ? styles.activityItem : styles.foodLogItem]}>
                 <Text style={styles.entryType}>{entry.kind === "activity" ? "Exercise" : "Food"}</Text>
                 <Text style={styles.foodName}>{entry.kind === "activity" ? entry.type : entry.name}</Text>
                 <Text style={styles.foodQty}>
@@ -324,10 +324,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   topBar: {
-    alignItems: "flex-start",
-    gap: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    columnGap: 8,
+    rowGap: 8,
   },
   datePill: {
+    flexShrink: 1,
     borderWidth: 1,
     borderColor: "rgba(15,23,42,0.06)",
     borderRadius: 999,
@@ -347,6 +352,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   rangeHint: {
+    width: "100%",
     color: colors.muted,
     fontSize: 13,
   },

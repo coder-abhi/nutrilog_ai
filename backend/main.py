@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from auth import create_access_token, get_current_user
 
-from models import Activity, ActivityInput, ExtractionResponse, SignInInput, SignUpInput, TrackerCardInput, TrackerCardUpdateInput, TrackerEntryInput, TrackerVisibilityInput
+from models import Activity, ActivityInput, ExtractionResponse, ProfileUpdateInput, SignInInput, SignUpInput, TrackerCardInput, TrackerCardUpdateInput, TrackerEntryInput, TrackerVisibilityInput
 from utils import aggregate_summary
 from met_engine import calculate_realtime_burn
 
@@ -39,6 +39,7 @@ from crud import (
     set_tracker_card_visibility,
     update_tracker_card,
     upsert_tracker_entry,
+    update_user_profile,
 )
 
 
@@ -135,6 +136,42 @@ def signin(data: SignInInput, db: Session = Depends(get_db)):
             "goal": user.goal or "",
         },
     }
+
+
+def _user_payload(user):
+    return {
+        "username": user.username,
+        "weight_kg": user.weight_kg,
+        "target_weight_kg": getattr(user, "target_weight_kg", None),
+        "height_cm": user.height_cm,
+        "gender": user.gender,
+        "activity_level": user.activity_level,
+        "goal": user.goal or "",
+    }
+
+
+@app.patch("/profile")
+def edit_profile(data: ProfileUpdateInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if data.weight_kg <= 0:
+        raise HTTPException(status_code=400, detail="Weight must be greater than 0.")
+    if data.height_cm <= 0:
+        raise HTTPException(status_code=400, detail="Height must be greater than 0.")
+    if data.target_weight_kg is not None and data.target_weight_kg <= 0:
+        raise HTTPException(status_code=400, detail="Target weight must be greater than 0.")
+
+    user = update_user_profile(
+        db,
+        current_user.username,
+        weight_kg=data.weight_kg,
+        target_weight_kg=data.target_weight_kg,
+        height_cm=data.height_cm,
+        gender=data.gender,
+        activity_level=data.activity_level,
+        goal=data.goal,
+    )
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return {"success": True, "user": _user_payload(user)}
 @app.get("/passive_calorie_burned")
 def passive_calorie_burned(current_user=Depends(get_current_user)):
     """

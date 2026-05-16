@@ -94,6 +94,147 @@
   background: #f3f4f6;
 }
 
+.mobileMenuButton,
+.mobileDrawerLayer {
+  display: none;
+}
+
+.mobileMenuButton {
+  align-items: center;
+  justify-content: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  margin-right: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  color: #111827;
+  cursor: pointer;
+}
+
+.mobileDrawerBackdrop {
+  position: fixed;
+  inset: 0;
+  border: 0;
+  background: rgba(15, 23, 42, 0.36);
+}
+
+.mobileDrawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(84vw, 22rem);
+  padding: max(1rem, env(safe-area-inset-top)) 1rem max(1rem, env(safe-area-inset-bottom));
+  background: #ffffff;
+  box-shadow: -18px 0 36px rgba(15, 23, 42, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.mobileDrawerTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.mobileUserCard {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.mobileUserIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 0.75rem;
+  background: #eef2ff;
+  color: #1d4ed8;
+}
+
+.mobileUserCard strong,
+.mobileUserCard span {
+  display: block;
+}
+
+.mobileUserCard strong {
+  color: #111827;
+  overflow-wrap: anywhere;
+}
+
+.mobileUserCard span {
+  color: #4b5563;
+  font-size: 0.85rem;
+}
+
+.mobileCloseButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.65rem;
+  background: #ffffff;
+  color: #111827;
+  cursor: pointer;
+}
+
+.mobileDrawerLinks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.mobileDrawerLink,
+.mobileDrawerLinkActive,
+.mobileSignOutButton {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid transparent;
+  color: #111827;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.mobileDrawerLink svg,
+.mobileDrawerLinkActive svg,
+.mobileSignOutButton svg {
+  flex: 0 0 auto;
+}
+
+.mobileDrawerLink {
+  background: #f8fafc;
+  border-color: #edf2f7;
+}
+
+.mobileDrawerLinkActive {
+  background: #111827;
+  border-color: #111827;
+  color: #ffffff;
+}
+
+.mobileSignOutButton {
+  border: 1px solid #fee2e2;
+  background: #fef2f2;
+  color: #991b1b;
+  cursor: pointer;
+}
+
 .main {
   flex: 1;
   width: 100%;
@@ -449,31 +590,66 @@
 
 @media (max-width: 640px) {
   .main {
-    padding-bottom: 8.5rem;
+    padding-bottom: 10.5rem;
   }
 
   .header {
-    padding-inline: 0;
+    padding: 0.75rem 0;
+  }
+
+  .hero {
+    display: none;
   }
 
   .topBar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .nav {
-    gap: 0.4rem;
-    justify-content: center;
+    align-items: center;
+    gap: 0.6rem;
     flex-wrap: wrap;
   }
 
-  .userName {
-    width: 100%;
-    text-align: center;
+  .datePill {
+    flex: 0 0 auto;
+    padding-inline: 0.8rem;
   }
 
-  .signOut {
-    white-space: nowrap;
+  .viewTabs {
+    margin-left: auto;
+    flex: 0 0 auto;
+  }
+
+  .viewTab,
+  .viewTabActive {
+    padding-inline: 0.62rem;
+  }
+
+  .rangeHint {
+    flex-basis: 100%;
+  }
+
+  .nav {
+    display: none;
+  }
+
+  .mobileMenuButton {
+    display: inline-flex;
+  }
+
+  .mobileDrawerLayer {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: block;
+  }
+
+  .footerInput {
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: max(0.85rem, env(safe-area-inset-bottom));
+    width: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.9rem;
+    padding: 0.6rem;
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.16);
   }
 
   .cardHeaderRow {

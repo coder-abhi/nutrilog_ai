@@ -21,6 +21,7 @@ type AuthContextType = {
   loading: boolean;
   signIn: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signUp: (data: SignUpPayload) => Promise<{ success: boolean; error?: string }>;
+  updateProfile: (data: Omit<User, "username">) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   getAuthHeaders: () => Record<string, string>;
 };
@@ -96,6 +97,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [persistAuth],
   );
 
+  const updateProfile = useCallback(
+    async (payload: Omit<User, "username">) => {
+      if (!token) return { success: false, error: "You are not signed in." };
+      try {
+        const res = await fetch(`${API_BASE_URL}/profile`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) return { success: false, error: data.detail || "Profile update failed" };
+        await persistAuth(data.user as User, token);
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : "Network error" };
+      }
+    },
+    [persistAuth, token],
+  );
+
   const signOut = useCallback(async () => {
     setUser(null);
     setToken(null);
@@ -108,8 +132,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ user, token, loading, signIn, signUp, signOut, getAuthHeaders }),
-    [user, token, loading, signIn, signUp, signOut, getAuthHeaders],
+    () => ({ user, token, loading, signIn, signUp, updateProfile, signOut, getAuthHeaders }),
+    [user, token, loading, signIn, signUp, updateProfile, signOut, getAuthHeaders],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
