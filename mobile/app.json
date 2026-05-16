@@ -7,6 +7,9 @@
     "scheme": "nutrilog",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "android": {
+      "softwareKeyboardLayoutMode": "resize"
+    },
     "plugins": ["expo-router"],
     "experiments": {
       "typedRoutes": true

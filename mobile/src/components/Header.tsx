@@ -70,17 +70,25 @@ export function Header() {
                 const active = item.match === "/" ? pathname === "/" : pathname.startsWith(item.match);
                 return (
                   <Link key={item.href} href={item.href} asChild>
-                    <Pressable style={[styles.navLink, active && styles.navLinkActive]} onPress={closeMenu}>
-                      <Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={19} color={active ? colors.panel : colors.inkSoft} />
-                      <Text style={[styles.navText, active && styles.navTextActive]}>{item.label}</Text>
+                    <Pressable style={[styles.menuItem, styles.navLink, active && styles.navLinkActive]} onPress={closeMenu}>
+                      <View style={styles.navLinkContent}>
+                        <View style={styles.navIconFrame}>
+                          <Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={19} color={active ? colors.red : colors.inkSoft} />
+                        </View>
+                        <Text style={[styles.navText, active && styles.navTextActive]}>{item.label}</Text>
+                      </View>
                     </Pressable>
                   </Link>
                 );
               })}
 
-              <Pressable style={styles.signOut} onPress={handleSignOut}>
-                <Ionicons name="log-out-outline" size={19} color={colors.red} />
-                <Text style={styles.signOutText}>Sign out</Text>
+              <Pressable style={[styles.menuItem, styles.signOut]} onPress={handleSignOut}>
+                <View style={styles.navLinkContent}>
+                  <View style={styles.navIconFrame}>
+                    <Ionicons name="log-out-outline" size={19} color={colors.red} />
+                  </View>
+                  <Text style={styles.signOutText}>Sign out</Text>
+                </View>
               </Pressable>
             </View>
           </SafeAreaView>
@@ -192,46 +200,60 @@ const styles = StyleSheet.create({
     backgroundColor: colors.panel,
   },
   nav: {
-    gap: 7,
+    width: "100%",
   },
-  navLink: {
-    minHeight: 46,
+  menuItem: {
+    width: "100%",
+    height: 46,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#edf2f7",
-    backgroundColor: "#f8fafc",
+    paddingVertical: 0,
     paddingHorizontal: 12,
+    justifyContent: "center",
+  },
+  navLink: {
+    borderColor: "#fee2e2",
+    backgroundColor: colors.redSoft,
+    marginBottom: 12,
+  },
+  navLinkContent: {
+    width: "100%",
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    justifyContent: "flex-start",
+  },
+  navIconFrame: {
+    width: 20,
+    height: 20,
+    marginRight: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
   navLinkActive: {
-    backgroundColor: colors.ink,
-    borderColor: colors.ink,
+    backgroundColor: colors.redSoft,
+    borderColor: "#fecaca",
   },
   navText: {
+    flexShrink: 1,
     color: colors.ink,
     fontSize: 15,
     fontWeight: "700",
+    lineHeight: 18,
   },
   navTextActive: {
-    color: colors.panel,
+    color: colors.red,
   },
   signOut: {
-    minHeight: 46,
-    marginTop: 6,
-    borderRadius: 12,
-    borderWidth: 1,
     borderColor: "#fee2e2",
     backgroundColor: colors.redSoft,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+    marginBottom: 0,
   },
   signOutText: {
+    flexShrink: 1,
     color: colors.red,
     fontSize: 15,
     fontWeight: "800",
+    lineHeight: 18,
   },
 });

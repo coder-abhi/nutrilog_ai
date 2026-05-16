@@ -197,8 +197,9 @@
 .mobileDrawerLink,
 .mobileDrawerLinkActive,
 .mobileSignOutButton {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 0.45rem;
   width: 100%;
   min-height: 2.75rem;
@@ -209,6 +210,8 @@
   font-size: 0.95rem;
   font-weight: 700;
   text-decoration: none;
+  line-height: 1;
+  text-align: left;
 }
 
 .mobileDrawerLink svg,
@@ -217,9 +220,16 @@
   flex: 0 0 auto;
 }
 
+.mobileDrawerLink span,
+.mobileDrawerLinkActive span,
+.mobileSignOutButton span {
+  display: inline-flex;
+  align-items: center;
+}
+
 .mobileDrawerLink {
-  background: #f8fafc;
-  border-color: #edf2f7;
+  background: #f3f4f6;
+  border-color: #e5e7eb;
 }
 
 .mobileDrawerLinkActive {
@@ -233,6 +243,7 @@
   background: #fef2f2;
   color: #991b1b;
   cursor: pointer;
+  appearance: none;
 }
 
 .main {

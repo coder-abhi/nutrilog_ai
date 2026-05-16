@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/auth/AuthContext";
@@ -28,6 +28,21 @@ export function BottomLogInput({ logDate, onLogged }: { logDate: string; onLogge
   const [logTimeMinutes, setLogTimeMinutes] = useState(() => getCurrentMinutes());
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSubscription = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setKeyboardVisible(false);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const submit = async () => {
     if (!input.trim()) return;
@@ -61,48 +76,59 @@ export function BottomLogInput({ logDate, onLogged }: { logDate: string; onLogge
   };
 
   return (
-    <View style={[styles.footer, { bottom: Math.max(insets.bottom, 14) }]}>
-      {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
-      {!!input.trim() && (
-        <View style={styles.timeBox}>
-          <View style={styles.timeHeader}>
-            <Text style={styles.timeLabel}>Log time</Text>
-            <Text style={styles.timeValue}>{formatSliderTime(logTimeMinutes)}</Text>
+    <KeyboardAvoidingView
+      pointerEvents="box-none"
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={0}
+      style={styles.footerLayer}
+    >
+      <View style={[styles.footer, { marginBottom: keyboardVisible ? 0 : Math.max(insets.bottom, 14) }]}>
+        {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
+        {!!input.trim() && (
+          <View style={styles.timeBox}>
+            <View style={styles.timeHeader}>
+              <Text style={styles.timeLabel}>Log time</Text>
+              <Text style={styles.timeValue}>{formatSliderTime(logTimeMinutes)}</Text>
+            </View>
+            <View style={styles.timeSteps}>
+              {[0, 360, 720, 1080, 1439].map((minute) => (
+                <Pressable key={minute} style={styles.timeStep} onPress={() => setLogTimeMinutes(minute)}>
+                  <Text style={[styles.timeStepText, Math.abs(logTimeMinutes - minute) < 120 && styles.timeStepActive]}>
+                    {formatSliderTime(minute).replace(":00 ", "")}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
-          <View style={styles.timeSteps}>
-            {[0, 360, 720, 1080, 1439].map((minute) => (
-              <Pressable key={minute} style={styles.timeStep} onPress={() => setLogTimeMinutes(minute)}>
-                <Text style={[styles.timeStepText, Math.abs(logTimeMinutes - minute) < 120 && styles.timeStepActive]}>
-                  {formatSliderTime(minute).replace(":00 ", "")}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+        )}
+        <View style={styles.row}>
+          <TextInput
+            value={input}
+            onChangeText={setInput}
+            onSubmitEditing={submit}
+            placeholder="Type: I walked 5 km, I ate 2 chapatis..."
+            placeholderTextColor="#6b7280"
+            style={styles.input}
+            returnKeyType="send"
+          />
+          <Pressable style={[styles.button, isLoading && styles.disabled]} onPress={submit} disabled={isLoading}>
+            {isLoading ? <ActivityIndicator color="#f9fafb" /> : <Text style={styles.buttonText}>Submit</Text>}
+          </Pressable>
         </View>
-      )}
-      <View style={styles.row}>
-        <TextInput
-          value={input}
-          onChangeText={setInput}
-          onSubmitEditing={submit}
-          placeholder="Type: I walked 5 km, I ate 2 chapatis..."
-          placeholderTextColor="#6b7280"
-          style={styles.input}
-          returnKeyType="send"
-        />
-        <Pressable style={[styles.button, isLoading && styles.disabled]} onPress={submit} disabled={isLoading}>
-          {isLoading ? <ActivityIndicator color="#f9fafb" /> : <Text style={styles.buttonText}>Submit</Text>}
-        </Pressable>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  footer: {
+  footerLayer: {
     position: "absolute",
     left: 12,
     right: 12,
+    bottom: 0,
+    justifyContent: "flex-end",
+  },
+  footer: {
     padding: 10,
     gap: 6,
     backgroundColor: "rgba(255,255,255,0.94)",
