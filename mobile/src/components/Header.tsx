@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Link, usePathname } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -26,6 +26,7 @@ const goalLabels: Record<string, string> = {
 
 export function Header() {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const userGoal = user?.goal ? goalLabels[user.goal] ?? user.goal : "";
@@ -38,7 +39,9 @@ export function Header() {
 
   return (
     <View style={styles.header}>
-      <Text style={styles.brand}>Daily Log</Text>
+      <Pressable onPress={() => router.push("/")} accessibilityRole="button" accessibilityLabel="Go to dashboard">
+        <Text style={styles.brand}>Daily Log</Text>
+      </Pressable>
       <Pressable style={styles.menuButton} onPress={() => setMenuOpen(true)} accessibilityRole="button" accessibilityLabel="Open menu">
         <Ionicons name="menu" size={25} color={colors.ink} />
       </Pressable>
@@ -69,16 +72,21 @@ export function Header() {
               {links.map((item) => {
                 const active = item.match === "/" ? pathname === "/" : pathname.startsWith(item.match);
                 return (
-                  <Link key={item.href} href={item.href} asChild>
-                    <Pressable style={[styles.menuItem, styles.navLink, active && styles.navLinkActive]} onPress={closeMenu}>
-                      <View style={styles.navLinkContent}>
-                        <View style={styles.navIconFrame}>
-                          <Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={19} color={active ? colors.red : colors.inkSoft} />
-                        </View>
-                        <Text style={[styles.navText, active && styles.navTextActive]}>{item.label}</Text>
+                  <Pressable
+                    key={item.href}
+                    style={[styles.menuItem, styles.navLink, active && styles.navLinkActive]}
+                    onPress={() => {
+                      closeMenu();
+                      router.push(item.href);
+                    }}
+                  >
+                    <View style={styles.navLinkContent}>
+                      <View style={styles.navIconFrame}>
+                        <Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={19} color={active ? colors.blue : colors.inkSoft} />
                       </View>
-                    </Pressable>
-                  </Link>
+                      <Text style={[styles.navText, active && styles.navTextActive]}>{item.label}</Text>
+                    </View>
+                  </Pressable>
                 );
               })}
 
@@ -204,7 +212,7 @@ const styles = StyleSheet.create({
   },
   menuItem: {
     width: "100%",
-    height: 46,
+    height: 50,
     borderRadius: 12,
     borderWidth: 1,
     paddingVertical: 0,
@@ -212,8 +220,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   navLink: {
-    borderColor: "#fee2e2",
-    backgroundColor: colors.redSoft,
+    borderColor: "rgba(255,255,255,0.94)",
+    backgroundColor: "rgba(255,255,255,0.94)",
     marginBottom: 12,
   },
   navLinkContent: {
@@ -224,15 +232,15 @@ const styles = StyleSheet.create({
   },
   navIconFrame: {
     width: 20,
-    height: 20,
-    marginRight: 6,
+    height: 30,
+    marginRight: 10,
     alignItems: "center",
     justifyContent: "center",
-    flexShrink: 0,
-  },
+    flexShrink: 1,
+    },
   navLinkActive: {
-    backgroundColor: colors.redSoft,
-    borderColor: "#fecaca",
+    backgroundColor: colors.blueSoft,
+    borderColor: colors.softBlue,
   },
   navText: {
     flexShrink: 1,
@@ -242,7 +250,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   navTextActive: {
-    color: colors.red,
+    color: colors.blue,
   },
   signOut: {
     borderColor: "#fee2e2",
@@ -256,4 +264,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 18,
   },
+
+
+  
 });
