@@ -1,17 +1,17 @@
 # NutriLog AI
 
-An AI-powered health and nutrition tracking application that lets users log food and activities through natural language input. Combines local NLP (sentence embeddings + MET values) with LLM fallback for accurate parsing.
+An AI-powered health and nutrition tracking application that lets users log food and activities through natural language input.
 
 ## Tech Stack
 
-**Frontend**: Next.js 16, React 19, TypeScript, Recharts  
-**Backend**: FastAPI, Python 3.10+, SQLite, JWT Auth  
-**AI/NLP**: OpenAI GPT-4o-mini, Sentence Transformers (all-MiniLM-L6-v2), spaCy
+**Web**: Next.js 16, React 19, TypeScript
+**Mobile**: Expo 54, React Native 0.81, Expo Router
+**Backend**: FastAPI, Python 3.12, SQLAlchemy, SQLite/PostgreSQL, JWT auth
+**AI**: OpenAI structured JSON extraction
 
 ## Features
 
 - **Natural Language Logging** - Log food and activities in plain English (e.g., "I ran 5km and had poha for breakfast")
-- **Hybrid Parsing Pipeline** - Local sentence embeddings for common activities + LLM fallback for complex queries
 - **MET-based Calorie Calculation** - Accurate calorie burn estimation using MET values and user biometrics
 - **Macro Tracking** - Track calories, protein, carbs, fat, fiber, and sugar intake
 - **Weight Tracking** - Log and visualize weight changes over time
@@ -27,7 +27,6 @@ nutrilog-ai/
 │   ├── models.py            # Pydantic models
 │   ├── crud.py              # Database operations
 │   ├── auth.py              # JWT authentication
-│   ├── hybrid_parser.py     # NLP parsing pipeline
 │   ├── met_engine.py        # Calorie calculation engine
 │   └── requirements.txt
 ├── frontend/
@@ -37,6 +36,7 @@ nutrilog-ai/
 │   │   ├── weight-tracker/  # Weight tracking
 │   │   └── components/      # UI components
 │   └── package.json
+├── mobile/                  # Expo mobile application
 └── docs/
     └── decision/            # Architecture decisions
 ```
@@ -45,28 +45,26 @@ nutrilog-ai/
 
 ### Prerequisites
 
-- Python 3.10+
-- Node.js 18+
+- Python 3.12
+- Node.js 20+
 - OpenAI API key
 
 ### Backend
 
 ```bash
 cd backend
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+python -m venv ../.venv
+source ../.venv/bin/activate
 pip install -r requirements.txt
-python -m spacy download en_core_web_sm
 ```
 
-Create a `.env` file in the backend directory:
+Create the backend environment file:
 
-```env
-OPENAI_API_KEY=your_api_key_here
-SECRET_KEY=your_secret_key_here
+```bash
+cp .env.example .env
 ```
 
-Start the backend server:
+Set `OPENAI_API_KEY` and a random `JWT_SECRET_KEY` of at least 32 characters. For production, set `DATABASE_URL` to PostgreSQL and list the exact web origins in `CORS_ORIGINS`.
 
 ```bash
 uvicorn main:app --reload --port 8000
@@ -76,11 +74,21 @@ uvicorn main:app --reload --port 8000
 
 ```bash
 cd frontend
-npm install
+npm ci
+cp .env.example .env.local
 npm run dev
 ```
 
 The frontend runs on `http://localhost:3000` and the API on `http://localhost:8000`.
+
+### Mobile
+
+```bash
+cd mobile
+npm ci
+cp .env.example .env
+npm start
+```
 
 ## API Endpoints
 
@@ -97,9 +105,6 @@ The frontend runs on `http://localhost:3000` and the API on `http://localhost:80
 ## How It Works
 
 1. **Input Parsing**: User enters natural language (e.g., "I walked 3km and ate 2 rotis")
-2. **Hybrid Pipeline**: 
-   - Local parser uses sentence embeddings to detect known activities
-   - MET values calculate calorie burn for detected activities
-   - Unknown items fall back to GPT-4o-mini for parsing
+2. **Structured Extraction**: The configured OpenAI model returns validated food, activity, and insulin-curve JSON.
 3. **Storage**: Parsed data saved to SQLite with timestamps
 4. **Summary**: Aggregated macros and calories returned to frontend

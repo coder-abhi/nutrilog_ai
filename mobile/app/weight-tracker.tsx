@@ -38,18 +38,22 @@ function WeightTrackerContent() {
   const [viewRange, setViewRange] = useState<RangeKey>("month");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchWeights = useCallback(async () => {
     if (!user?.username) return;
+    setLoadError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/weight_entries`, { headers: { ...getAuthHeaders() } });
       if (res.status === 401) {
         await signOut();
         return;
       }
-      if (res.ok) setEntries(await res.json());
-    } catch {
+      if (!res.ok) throw new Error("Could not load weight entries.");
+      setEntries(await res.json());
+    } catch (err) {
       setEntries([]);
+      setLoadError(err instanceof Error ? err.message : "Could not load weight entries.");
     } finally {
       setLoading(false);
     }
@@ -183,6 +187,8 @@ function WeightTrackerContent() {
           <Text style={styles.sectionTitle}>Weight entries</Text>
           {loading ? (
             <Text style={styles.meta}>Loading...</Text>
+          ) : loadError ? (
+            <Text style={styles.meta} accessibilityRole="alert">{loadError}</Text>
           ) : entries.length === 0 ? (
             <Text style={styles.meta}>No weight entries yet. Your profile weight ({user?.weight_kg ?? "-"} kg) is used until you add entries via the API.</Text>
           ) : (

@@ -50,13 +50,17 @@ function CalendarContent() {
   const fetchDaySummary = useCallback(
     async (dateStr: string) => {
       setLoading(true);
+      setDaySummary(null);
       try {
         const res = await fetch(`${API_BASE_URL}/today_summary?date=${dateStr}`, { headers: { ...getAuthHeaders() } });
         if (res.status === 401) {
           await signOut();
           return;
         }
-        if (!res.ok) return;
+        if (!res.ok) {
+          setDaySummary(null);
+          return;
+        }
         setDaySummary(await res.json());
       } catch {
         setDaySummary(null);

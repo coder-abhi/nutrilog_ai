@@ -2,10 +2,9 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
+import { API_BASE_URL } from "../lib/api";
 import styles from "./WeightTracker.module.css";
 import Header from "./Header";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 type WeightEntry = { value_kg: number; recorded_at: string | null };
 type RangeKey = "week" | "month" | "year" | "all";
@@ -29,22 +28,25 @@ export default function WeightTracker() {
   const [viewRange, setViewRange] = useState<RangeKey>("month");
   const [logWeightSubmitting, setLogWeightSubmitting] = useState(false);
   const [logWeightError, setLogWeightError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchWeights = useCallback(async () => {
     if (!user?.username) return;
+    setLoadError(null);
     try {
-      const res = await fetch(`${API_BASE}/weight_entries`, {
+      const res = await fetch(`${API_BASE_URL}/weight_entries`, {
         headers: { ...getAuthHeaders() },
       });
       if (res.status === 401) {
         signOut();
         return;
       }
-      if (!res.ok) return;
+      if (!res.ok) throw new Error("Could not load weight entries.");
       const data = await res.json();
       setEntries(Array.isArray(data) ? data : []);
-    } catch {
+    } catch (err) {
       setEntries([]);
+      setLoadError(err instanceof Error ? err.message : "Could not load weight entries.");
     } finally {
       setLoading(false);
     }
@@ -120,7 +122,7 @@ export default function WeightTracker() {
     setLogWeightError(null);
     setLogWeightSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE}/weight_entry`, {
+      const res = await fetch(`${API_BASE_URL}/weight_entry`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ value_kg: v, recorded_at: logWeightDate || undefined }),
@@ -283,6 +285,8 @@ export default function WeightTracker() {
           <h2 className={styles.sectionTitle}>Weight entries</h2>
           {loading ? (
             <p className={styles.entryMeta}>Loading…</p>
+          ) : loadError ? (
+            <p className={styles.entryMeta} role="alert">{loadError}</p>
           ) : entries.length === 0 ? (
             <p className={styles.entryMeta}>
               No weight entries yet. Your profile weight ({user?.weight_kg ?? "—"} kg) is used until you add entries via the API.

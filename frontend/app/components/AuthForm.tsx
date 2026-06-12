@@ -65,6 +65,10 @@ export default function AuthForm() {
         setError("Enter username and password.");
         return;
       }
+      if (password.length < 8) {
+        setError("Password must be at least 8 characters.");
+        return;
+      }
       setStep(2);
       return;
     }

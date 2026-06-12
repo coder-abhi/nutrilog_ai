@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { API_BASE_URL } from "../lib/api";
 import styles from "./BottomInput.module.css";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 export type SummaryData = {
   calories_intake?: number;
@@ -46,7 +45,7 @@ export default function BottomInput({ onCaloriesCalculated, logDate }: Props) {
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const response = await fetch(`${API_BASE}/log_input`, {
+      const response = await fetch(`${API_BASE_URL}/log_input`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ sentence: userText, date: logDate, log_time_minutes: logTimeMinutes }),

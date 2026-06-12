@@ -1,36 +1,3 @@
-# def calculate_calories_burned(activity_type: str, quantity: float, unit: str, weight: float) -> int:
-    
-#     activity_type = activity_type.lower()
-#     print("Activity Type: ",activity_type)
-#     print("Qty",quantity)
-#     print("Uint: ",unit)
-
-#     if activity_type not in MET_VALUES:
-#         return 0  # unknown activity
-
-#     met = MET_VALUES[activity_type]
-
-#     # Convert to duration in hours
-#     duration_hours = 0
-
-#     if unit == "km":
-#         speed = AVERAGE_SPEED.get(activity_type, 5)
-#         duration_hours = quantity / speed
-
-#     elif unit in ["minute", "minutes"]:
-#         duration_hours = quantity / 60
-
-#     elif unit in ["hour", "hours"]:
-#         duration_hours = quantity
-
-#     else:
-#         return 0  # unsupported unit
-
-#     calories = met * weight * duration_hours
-
-#     return round(calories)
-
-# --- Real-time calorie burn calculation ---
 from datetime import datetime as dt
 
 def calculate_realtime_burn(weight_kg: float, height_cm: float, gender: str, activity_level: str | None = None, age: int | None = None) -> float:
@@ -55,7 +22,8 @@ def calculate_realtime_burn(weight_kg: float, height_cm: float, gender: str, act
         "low":1.2,
         "moderate":1.35,
         "high":1.55,
-        "very high":1.75
+        "very_high":1.75,
+        "very high":1.75,
     }
     activity_multiplier = activity_multipliers.get((activity_level or "low").lower(), 1.2)
 
@@ -67,8 +35,6 @@ def calculate_realtime_burn(weight_kg: float, height_cm: float, gender: str, act
 
     sleep_hours = min(hours_since_midnight, 6)
     wake_hours = max(0, hours_since_midnight - 6)
-
-    # print("Sleep Hours: ",sleep_hours,"\t Wake Hours:",wake_hours)
 
     total_burned = (sleep_hours * sleep_cal_per_hour) + (wake_hours * wake_cal_per_hour)
 

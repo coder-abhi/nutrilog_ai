@@ -1,32 +1,73 @@
-from datetime import datetime
-from sqlalchemy import Column, Integer, Nullable, String, Float, DateTime, Date, Boolean, ForeignKey, Text, create_engine, engine, text
-from sqlalchemy.orm import relationship, declarative_base, sessionmaker
-from pathlib import Path
-import uuid
+import base64
+from datetime import datetime, timedelta
 import hashlib
+import hmac
 import os
+from pathlib import Path
+import secrets
+import uuid
+
 from dotenv import load_dotenv
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, inspect, text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import declarative_base, relationship, selectinload, sessionmaker
+
 from models import SignUpInput
 
-load_dotenv(override=True)
+load_dotenv()
 
 
 Base = declarative_base()
 
 
+PASSWORD_SCHEME = "pbkdf2_sha256"
+PASSWORD_ITERATIONS = 600_000
+
+
+def _encode_bytes(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
+
+
+def _decode_bytes(value: str) -> bytes:
+    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+
+
 def _hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        PASSWORD_ITERATIONS,
+    )
+    return f"{PASSWORD_SCHEME}${PASSWORD_ITERATIONS}${_encode_bytes(salt)}${_encode_bytes(digest)}"
 
 
 def verify_password(password: str, stored_hash: str) -> bool:
-    return _hash_password(password) == stored_hash
+    if stored_hash.startswith(f"{PASSWORD_SCHEME}$"):
+        try:
+            _, iterations, encoded_salt, encoded_digest = stored_hash.split("$", 3)
+            digest = hashlib.pbkdf2_hmac(
+                "sha256",
+                password.encode("utf-8"),
+                _decode_bytes(encoded_salt),
+                int(iterations),
+            )
+            return hmac.compare_digest(digest, _decode_bytes(encoded_digest))
+        except (TypeError, ValueError):
+            return False
+
+    legacy_digest = hashlib.sha256(password.encode("utf-8")).hexdigest()
+    return hmac.compare_digest(legacy_digest, stored_hash)
 
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-# DATABASE_URL = os.getenv("DATABASE_URL_LOCAL")
-
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL environment variable is not set")
+def _password_needs_upgrade(stored_hash: str) -> bool:
+    if not stored_hash.startswith(f"{PASSWORD_SCHEME}$"):
+        return True
+    try:
+        return int(stored_hash.split("$", 2)[1]) < PASSWORD_ITERATIONS
+    except (IndexError, ValueError):
+        return True
 
 
 # -----------------------------
@@ -158,7 +199,12 @@ def create_user(session,dataObj:SignUpInput):
         goal=dataObj.goal
     )
     session.add(user)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise ValueError("Username already exists") from exc
+    session.refresh(user)
     return user
 
 
@@ -174,6 +220,9 @@ def get_user_by_username_and_password(session, username: str, password: str) -> 
         return None
     if not verify_password(password, user.password_hash):
         return None
+    if _password_needs_upgrade(user.password_hash):
+        user.password_hash = _hash_password(password)
+        session.commit()
     return user
 
 
@@ -244,21 +293,27 @@ def create_health_log(session, user_id: str, raw_text: str, activities, foods, t
     return log
 
 
-def get_daily_logs(session, user_id: str, date: datetime | None = None):
-    """
-    Fetch all logs for a user on a given date.
-    """
-    if date is None:
-        date = datetime.now().date()
+def get_daily_logs(session, user_id: str, date=None, days: int = 1):
+    """Fetch logs for an inclusive date range, newest first."""
+    target_date = date or datetime.now().date()
+    start_date = target_date - timedelta(days=days - 1)
+    start = datetime(start_date.year, start_date.month, start_date.day)
+    end = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59, 999999)
 
-    start = datetime(date.year, date.month, date.day)
-    end = datetime(date.year, date.month, date.day, 23, 59, 59)
-
-    return session.query(HealthLogDB).filter(
-        HealthLogDB.user_id == user_id,
-        HealthLogDB.timestamp >= start,
-        HealthLogDB.timestamp <= end
-    ).order_by(HealthLogDB.timestamp.desc()).all()
+    return (
+        session.query(HealthLogDB)
+        .options(
+            selectinload(HealthLogDB.activities),
+            selectinload(HealthLogDB.foods),
+        )
+        .filter(
+            HealthLogDB.user_id == user_id,
+            HealthLogDB.timestamp >= start,
+            HealthLogDB.timestamp <= end,
+        )
+        .order_by(HealthLogDB.timestamp.desc())
+        .all()
+    )
 
 
 def create_weight_entry(session, user_id: str, value_kg: float, recorded_at: datetime | None = None):
@@ -368,45 +423,31 @@ def get_tracker_entries(session, user_id: str, start_date=None, end_date=None):
 
 
 LOCAL_DB_PATH = Path(__file__).resolve().parent / "local.db"
+LOCAL_DATABASE_URL = f"sqlite:///{LOCAL_DB_PATH}"
+DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("DATABASE_URL_ONLINE") or LOCAL_DATABASE_URL
+if DATABASE_URL in {"sqlite:///./local.db", "sqlite:///local.db"}:
+    DATABASE_URL = LOCAL_DATABASE_URL
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# engine = create_engine(f"sqlite:///{LOCAL_DB_PATH}", connect_args={"check_same_thread": False})
+engine_options = {"pool_pre_ping": True}
+if DATABASE_URL.startswith("sqlite"):
+    engine_options["connect_args"] = {"check_same_thread": False}
 
-# engine = create_engine(
-#     DATABASE_URL,
-#     connect_args={"sslmode": "require"}
-# )
-engine = create_engine(
-    f"sqlite:///{LOCAL_DB_PATH}",
-    connect_args={"check_same_thread": False}
-)
+engine = create_engine(DATABASE_URL, **engine_options)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base.metadata.create_all(engine)
 
 
-def _migrate_add_target_weight():
-    """Add target_weight_kg to users if missing (e.g. existing DBs)."""
-    with engine.connect() as conn:
-        try:
-            conn.execute(text("ALTER TABLE users ADD COLUMN target_weight_kg REAL"))
-            conn.commit()
-        except Exception:
-            conn.rollback()
+def _add_column_if_missing(table_name: str, column_name: str, definition: str):
+    columns = {column["name"] for column in inspect(engine).get_columns(table_name)}
+    if column_name not in columns:
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"))
 
 
-_migrate_add_target_weight()
-
-
-def _migrate_add_insulin_curve():
-    """Add insulin_curve to health_logs if missing."""
-    with engine.connect() as conn:
-        try:
-            conn.execute(text("ALTER TABLE health_logs ADD COLUMN insulin_curve TEXT"))
-            conn.commit()
-        except Exception:
-            conn.rollback()
-
-
-_migrate_add_insulin_curve()
+_add_column_if_missing("users", "target_weight_kg", "REAL")
+_add_column_if_missing("health_logs", "insulin_curve", "TEXT")
 
 
 def get_db():

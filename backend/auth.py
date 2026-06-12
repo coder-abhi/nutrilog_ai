@@ -3,7 +3,7 @@ JWT-based authentication for FastAPI.
 Uses Bearer token in Authorization header; payload sub = username.
 """
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -13,9 +13,11 @@ from sqlalchemy.orm import Session
 from crud import get_db, get_user_by_username
 from dotenv import load_dotenv
 
-load_dotenv(override=True)
+load_dotenv()
 
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY") or os.getenv("SECRET_KEY")
+if not SECRET_KEY or len(SECRET_KEY) < 32:
+    raise RuntimeError("JWT_SECRET_KEY (or legacy SECRET_KEY) must be at least 32 characters")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "10080"))  # 7 days
 
@@ -25,8 +27,9 @@ security = HTTPBearer(auto_error=False)
 def create_access_token(data: dict) -> str:
     """Encode payload into JWT. Expects data with 'sub' (username)."""
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire, "iat": now})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 

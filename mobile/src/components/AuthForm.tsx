@@ -41,8 +41,27 @@ export function AuthForm() {
       setError("Enter username and password.");
       return;
     }
+    if (isSignUp && password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
     if (isSignUp && step === 1 && !skipProfile) {
       setStep(2);
+      return;
+    }
+    const parsedWeight = Number(weightKg);
+    const parsedTargetWeight = Number(targetWeightKg);
+    const parsedHeight = Number(heightCm);
+    if (weightKg && (!Number.isFinite(parsedWeight) || parsedWeight <= 0)) {
+      setError("Enter a valid weight (kg), or leave it empty.");
+      return;
+    }
+    if (heightCm && (!Number.isFinite(parsedHeight) || parsedHeight <= 0)) {
+      setError("Enter a valid height (cm), or leave it empty.");
+      return;
+    }
+    if (selectedGoal === "weight_loss" && targetWeightKg && (!Number.isFinite(parsedTargetWeight) || parsedTargetWeight <= 0)) {
+      setError("Enter a valid target weight (kg), or leave it empty.");
       return;
     }
     setSubmitting(true);
@@ -50,9 +69,9 @@ export function AuthForm() {
       ? await signUp({
           username: username.trim(),
           password,
-          weight_kg: weightKg ? Number(weightKg) : 70,
-          target_weight_kg: selectedGoal === "weight_loss" && targetWeightKg ? Number(targetWeightKg) : null,
-          height_cm: heightCm ? Number(heightCm) : 170,
+          weight_kg: weightKg ? parsedWeight : 70,
+          target_weight_kg: selectedGoal === "weight_loss" && targetWeightKg ? parsedTargetWeight : null,
+          height_cm: heightCm ? parsedHeight : 170,
           gender,
           activity_level: activityLevel,
           goal: selectedGoal ?? "",

@@ -1,61 +1,54 @@
-from pydantic import BaseModel
-from typing import List
-from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 
 class Activity(BaseModel):
-    type: str
-    quantity: float
-    unit: str
-    calories_burned: int
+    type: str = Field(min_length=1, max_length=100)
+    quantity: float = Field(ge=0)
+    unit: str = Field(min_length=1, max_length=50)
+    calories_burned: int = Field(ge=0)
 
 
 class Food(BaseModel):
-    name: str
-    quantity: float
-    unit: str
-    calories: int
-    protein: int
-    carbs: int
-    fat: int
-    fibre: int
-    sugar: int
-    saturated_fat: int
-    sodium: int
+    name: str = Field(min_length=1, max_length=150)
+    quantity: float = Field(ge=0)
+    unit: str = Field(min_length=1, max_length=50)
+    calories: int = Field(ge=0)
+    protein: int = Field(ge=0)
+    carbs: int = Field(ge=0)
+    fat: int = Field(ge=0)
+    fibre: int = Field(ge=0)
+    sugar: int = Field(ge=0)
+    saturated_fat: int = Field(ge=0)
+    sodium: int = Field(ge=0)
 
 class InsulinPoint(BaseModel):
-    minute: int
-    value: int
-
-class HealthLog(BaseModel):
-    user_id: str
-    timestamp: datetime
-    activities: List[Activity]
-    foods: List[Food]
-    
+    minute: int = Field(ge=0, le=1440)
+    value: int = Field(ge=0, le=100)
 
 class ExtractionResponse(BaseModel):
-    activities: List[Activity]
-    foods: List[Food]
-    insulin_curve: List[InsulinPoint] = []
+    activities: list[Activity]
+    foods: list[Food]
+    insulin_curve: list[InsulinPoint] = Field(default_factory=list)
 
 class ActivityInput(BaseModel):
-    sentence: str
-    date: str | None = None
-    log_time_minutes: int | None = None
+    sentence: str = Field(min_length=1, max_length=2000)
+    date: str | None = Field(default=None, max_length=10)
+    log_time_minutes: int | None = Field(default=None, ge=0, le=1439)
 
 
 class TrackerCardInput(BaseModel):
-    name: str
-    value_type: str
-    target_days_per_week: int
-    description: str | None = None
+    name: str = Field(min_length=1, max_length=100)
+    value_type: Literal["boolean", "numeric"]
+    target_days_per_week: int = Field(ge=1, le=7)
+    description: str | None = Field(default=None, max_length=500)
 
 
 class TrackerCardUpdateInput(BaseModel):
-    name: str
-    target_days_per_week: int
-    description: str | None = None
+    name: str = Field(min_length=1, max_length=100)
+    target_days_per_week: int = Field(ge=1, le=7)
+    description: str | None = Field(default=None, max_length=500)
 
 
 class TrackerVisibilityInput(BaseModel):
@@ -64,42 +57,35 @@ class TrackerVisibilityInput(BaseModel):
 
 class TrackerEntryInput(BaseModel):
     tracker_id: str
-    value: float
-    date: str | None = None
+    value: float = Field(ge=0, le=1_000_000_000)
+    date: str | None = Field(default=None, max_length=10)
 
 
 class SignInInput(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=256)
 
 
 class SignUpInput(BaseModel):
-    username: str
-    password: str
-    weight_kg: float
-    target_weight_kg: float | None = None
-    height_cm: float
-    gender: str  # male | female | other
-    activity_level: str  # sedentary | low | moderate | high | very_high
-    goal: str | None = None
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=8, max_length=256)
+    weight_kg: float = Field(gt=0, le=1000)
+    target_weight_kg: float | None = Field(default=None, gt=0, le=1000)
+    height_cm: float = Field(ge=30, le=300)
+    gender: Literal["male", "female", "other"]
+    activity_level: Literal["sedentary", "low", "moderate", "high", "very_high"]
+    goal: str | None = Field(default=None, max_length=100)
 
 
 class ProfileUpdateInput(BaseModel):
-    weight_kg: float
-    target_weight_kg: float | None = None
-    height_cm: float
-    gender: str
-    activity_level: str
-    goal: str | None = None
+    weight_kg: float = Field(gt=0, le=1000)
+    target_weight_kg: float | None = Field(default=None, gt=0, le=1000)
+    height_cm: float = Field(ge=30, le=300)
+    gender: Literal["male", "female", "other"]
+    activity_level: Literal["sedentary", "low", "moderate", "high", "very_high"]
+    goal: str | None = Field(default=None, max_length=100)
 
 
-def total_macros(log: HealthLog) -> dict:
-    return {
-        "protein": sum(f.protein for f in log.foods),
-        "carbs": sum(f.carbs for f in log.foods),
-        "fat": sum(f.fat for f in log.foods),
-        "fibre": sum(f.fibre for f in log.foods),
-        "sugar": sum(f.sugar for f in log.foods),
-        "saturated_fat": sum(f.saturated_fat for f in log.foods),
-        "sodium": sum(f.sodium for f in log.foods),
-    }
+class WeightEntryInput(BaseModel):
+    value_kg: float = Field(gt=0, le=1000)
+    recorded_at: str | None = Field(default=None, max_length=32)

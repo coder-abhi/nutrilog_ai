@@ -6,7 +6,7 @@ import BottomInput from "./components/BottomInput";
 import styles from "./page.module.css";
 import { useAuth } from "./context/AuthContext";
 import Header from "./components/Header";
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+import { API_BASE_URL } from "./lib/api";
 
 type FoodEntry = {
   name: string;
@@ -104,73 +104,60 @@ function DashboardContent() {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [insulinCurves, setInsulinCurves] = useState<InsulinCurve[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(() => toYMD(new Date()));
   const [dashboardRange, setDashboardRange] = useState<DashboardRange>("today");
   const [passiveCalorie, setPassiveCalorie] = useState(0)
   const selectedRangeDays = dashboardRange === "today" ? 1 : dashboardRange === "week" ? 7 : 30;
 
-  const fetchSummaryForDate = useCallback(async (date: string) => {
+  const fetchSummaryForRange = useCallback(async (date: string, days: number) => {
     if (!user?.username) return;
-    const res = await fetch(`${API_BASE}/today_summary?date=${date}`, {
+    const res = await fetch(`${API_BASE_URL}/today_summary?date=${date}&days=${days}`, {
       headers: { ...getAuthHeaders() },
     });
     if (res.status === 401) {
       signOut();
       return null;
     }
-    if (!res.ok) return null;
+    if (!res.ok) {
+      throw new Error("Could not load dashboard data.");
+    }
     return res.json();
   }, [user?.username, getAuthHeaders, signOut]);
 
   const fetchDashboardSummary = useCallback(async () => {
     if (!user?.username) return;
     setLoading(true);
+    setLoadError(null);
     try {
-      const end = new Date(`${selectedDate}T00:00:00`);
-      const dates = Array.from({ length: selectedRangeDays }, (_, index) => {
-        const date = new Date(end);
-        date.setDate(end.getDate() - (selectedRangeDays - 1 - index));
-        return toYMD(date);
-      });
-
-      const summaries = await Promise.all(dates.map((date) => fetchSummaryForDate(date)));
-      const aggregate = summaries.reduce<SummaryData>((acc, item) => {
-        const summary = item?.summary ?? {};
-        return {
-          calories_intake: acc.calories_intake + (summary.calories_intake ?? 0),
-          calories_burned: acc.calories_burned + (summary.calories_burned ?? 0),
-          protein: acc.protein + (summary.protein ?? 0),
-          carbs: acc.carbs + (summary.carbs ?? 0),
-          fibre: acc.fibre + (summary.fibre ?? 0),
-          sugar: acc.sugar + (summary.sugar ?? 0),
-        };
-      }, { ...EMPTY_SUMMARY });
-      setSummaryData(aggregate);
-      const logEntries = summaries
-        .flatMap((item) => [
-          ...((item?.foods ?? []).map((entry: FoodEntry) => ({ ...entry, kind: "food" as const }))),
-          ...((item?.activities ?? []).map((entry: ActivityEntry) => ({ ...entry, kind: "activity" as const }))),
-        ])
+      const result = await fetchSummaryForRange(selectedDate, selectedRangeDays);
+      if (!result) return;
+      setSummaryData({ ...EMPTY_SUMMARY, ...result.summary });
+      const logEntries = [
+          ...((result.foods ?? []).map((entry: FoodEntry) => ({ ...entry, kind: "food" as const }))),
+          ...((result.activities ?? []).map((entry: ActivityEntry) => ({ ...entry, kind: "activity" as const }))),
+        ]
         .sort((a, b) => {
           const aTime = a.timestamp ? new Date(a.timestamp).getTime() : 0;
           const bTime = b.timestamp ? new Date(b.timestamp).getTime() : 0;
           return bTime - aTime;
         });
       setEntries(logEntries);
-      setInsulinCurves(summaries.flatMap((item) => item?.insulin_curves ?? []));
+      setInsulinCurves(result.insulin_curves ?? []);
     } catch {
       setSummaryData(EMPTY_SUMMARY);
       setEntries([]);
       setInsulinCurves([]);
+      setLoadError("Could not load dashboard data. Please try again.");
     } finally {
       setLoading(false);
     }
-  }, [fetchSummaryForDate, selectedDate, selectedRangeDays, user?.username]);
+  }, [fetchSummaryForRange, selectedDate, selectedRangeDays, user?.username]);
 
   const fetchPassiveCalorie = useCallback(async () => {
     if (!user?.username) return;
     try {
-      const res = await fetch(`${API_BASE}/passive_calorie_burned`, {
+      const res = await fetch(`${API_BASE_URL}/passive_calorie_burned`, {
         headers: { ...getAuthHeaders() },
       });
       if (res.status === 401) {
@@ -406,6 +393,8 @@ function DashboardContent() {
           </p>
           {loading ? (
             <div className={styles.placeholderCard}>Loading data...</div>
+          ) : loadError ? (
+            <div className={styles.placeholderCard} role="alert">{loadError}</div>
           ) : entries.length === 0 ? (
             <div className={styles.placeholderCard}>
               No entries yet. Log meals or exercise below to see them here.
@@ -455,16 +444,7 @@ function DashboardContent() {
     <section className={styles.footerInput}>
 
       <BottomInput
-        onCaloriesCalculated={(data) => {
-          setSummaryData((prev) => ({
-            ...prev,
-            calories_intake: data.calories_intake ?? prev.calories_intake,
-            calories_burned: data.calories_burned ?? prev.calories_burned,
-            protein: data.protein ?? prev.protein,
-            carbs: data.carbs ?? prev.carbs,
-            fibre: data.fibre ?? prev.fibre,
-            sugar: data.sugar ?? prev.sugar,
-          }));
+        onCaloriesCalculated={() => {
           fetchDashboardSummary();
         }}
         logDate={selectedDate}

@@ -7,9 +7,8 @@ import { Check, Flame, Pencil, Plus, X } from "lucide-react";
 import AuthGate from "../components/AuthGate";
 import Header from "../components/Header";
 import { useAuth } from "../context/AuthContext";
+import { API_BASE_URL } from "../lib/api";
 import styles from "./tracker.module.css";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 type TrackerEntry = {
   date: string;
@@ -212,17 +211,21 @@ function TrackerContent() {
   const [numericDrafts, setNumericDrafts] = useState<Record<string, string>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDrafts, setEditDrafts] = useState<Record<string, EditDraft>>({});
+  const [error, setError] = useState<string | null>(null);
 
   const fetchCards = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`${API_BASE}/tracker_cards`, { headers: { ...getAuthHeaders() } });
+      const res = await fetch(`${API_BASE_URL}/tracker_cards`, { headers: { ...getAuthHeaders() } });
       if (res.status === 401) {
         signOut();
         return;
       }
-      if (!res.ok) return;
+      if (!res.ok) throw new Error("Could not load trackers.");
       setCards(await res.json());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load trackers.");
     } finally {
       setLoading(false);
     }
@@ -235,26 +238,51 @@ function TrackerContent() {
   const visibleCards = useMemo(() => cards.filter((card) => card.is_visible), [cards]);
 
   const setVisibility = async (card: TrackerCard, isVisible: boolean) => {
+    setError(null);
     setCards((current) => current.map((item) => item.id === card.id ? { ...item, is_visible: isVisible } : item));
-    await fetch(`${API_BASE}/tracker_cards/${card.id}/visibility`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-      body: JSON.stringify({ is_visible: isVisible }),
-    });
+    try {
+      const res = await fetch(`${API_BASE_URL}/tracker_cards/${card.id}/visibility`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ is_visible: isVisible }),
+      });
+      if (res.status === 401) {
+        signOut();
+        return;
+      }
+      if (!res.ok) throw new Error("Could not update tracker visibility.");
+    } catch (err) {
+      setCards((current) => current.map((item) => item.id === card.id ? { ...item, is_visible: card.is_visible } : item));
+      setError(err instanceof Error ? err.message : "Could not update tracker visibility.");
+    }
   };
 
   const logValue = async (card: TrackerCard, value: number) => {
+    if (!Number.isFinite(value) || value < 0) {
+      setError("Enter a valid non-negative value.");
+      return;
+    }
     setSavingId(card.id);
+    setError(null);
     try {
-      const res = await fetch(`${API_BASE}/tracker_entries`, {
+      const res = await fetch(`${API_BASE_URL}/tracker_entries`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ tracker_id: card.id, value }),
       });
+      if (res.status === 401) {
+        signOut();
+        return;
+      }
       if (res.ok) {
         setNumericDrafts((current) => ({ ...current, [card.id]: "" }));
         fetchCards();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.detail || "Could not log tracker value.");
       }
+    } catch {
+      setError("Could not log tracker value.");
     } finally {
       setSavingId(null);
     }
@@ -269,8 +297,9 @@ function TrackerContent() {
     const draft = editDrafts[card.id];
     if (!draft?.name.trim()) return;
     setSavingId(card.id);
+    setError(null);
     try {
-      const res = await fetch(`${API_BASE}/tracker_cards/${card.id}`, {
+      const res = await fetch(`${API_BASE_URL}/tracker_cards/${card.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({
@@ -287,7 +316,12 @@ function TrackerContent() {
         const updated = await res.json();
         setCards((current) => current.map((item) => item.id === card.id ? { ...item, ...updated, entries: item.entries } : item));
         setEditingId(null);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.detail || "Could not update tracker.");
       }
+    } catch {
+      setError("Could not update tracker.");
     } finally {
       setSavingId(null);
     }
@@ -324,6 +358,8 @@ function TrackerContent() {
             ))
           )}
         </section>
+
+        {error && <div className={styles.emptyState} role="alert">{error}</div>}
 
         <section className={styles.grid}>
           {loading ? (

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { API_BASE_URL } from "../lib/api";
 
 const STORAGE_KEY = "daily_log_auth";
 
@@ -33,8 +34,6 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -51,7 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
     } catch {
-      // ignore
+      localStorage.removeItem(STORAGE_KEY);
     } finally {
       setLoading(false);
     }
@@ -65,7 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async (username: string, password: string) => {
     try {
-      const res = await fetch(`${API_BASE}/signin`, {
+      const res = await fetch(`${API_BASE_URL}/signin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
@@ -88,7 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = useCallback(
     async (data: SignUpPayload) => {
       try {
-        const res = await fetch(`${API_BASE}/signup`, {
+        const res = await fetch(`${API_BASE_URL}/signup`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data),
@@ -114,7 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (data: Omit<User, "username">) => {
       if (!token) return { success: false, error: "You are not signed in." };
       try {
-        const res = await fetch(`${API_BASE}/profile`, {
+        const res = await fetch(`${API_BASE_URL}/profile`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",

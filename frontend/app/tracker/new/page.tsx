@@ -6,9 +6,8 @@ import { useRouter } from "next/navigation";
 import AuthGate from "../../components/AuthGate";
 import Header from "../../components/Header";
 import { useAuth } from "../../context/AuthContext";
+import { API_BASE_URL } from "../../lib/api";
 import styles from "./newTracker.module.css";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 function NewTrackerContent() {
   const router = useRouter();
@@ -29,7 +28,7 @@ function NewTrackerContent() {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/tracker_cards`, {
+      const res = await fetch(`${API_BASE_URL}/tracker_cards`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({

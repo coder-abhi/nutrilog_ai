@@ -93,9 +93,14 @@ backend/.venv/
 .env*
 frontend/.env*
 backend/.env*
+!.env.example
+!frontend/.env.example
+!backend/.env.example
+!mobile/.env.example
 
 # -------------------------
 # OS / Misc
 # -------------------------
 .DS_Store
-*.pem*.db
+*.pem
+*.db

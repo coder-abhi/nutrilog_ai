@@ -80,16 +80,21 @@ function TrackerContent() {
   const [numericDrafts, setNumericDrafts] = useState<Record<string, string>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDrafts, setEditDrafts] = useState<Record<string, EditDraft>>({});
+  const [error, setError] = useState<string | null>(null);
 
   const fetchCards = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/tracker_cards`, { headers: { ...getAuthHeaders() } });
       if (res.status === 401) {
         await signOut();
         return;
       }
-      if (res.ok) setCards(await res.json());
+      if (!res.ok) throw new Error("Could not load trackers.");
+      setCards(await res.json());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load trackers.");
     } finally {
       setLoading(false);
     }
@@ -102,16 +107,32 @@ function TrackerContent() {
   const visibleCards = useMemo(() => cards.filter((card) => card.is_visible), [cards]);
 
   const setVisibility = async (card: TrackerCard, isVisible: boolean) => {
+    setError(null);
     setCards((current) => current.map((item) => (item.id === card.id ? { ...item, is_visible: isVisible } : item)));
-    await fetch(`${API_BASE_URL}/tracker_cards/${card.id}/visibility`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-      body: JSON.stringify({ is_visible: isVisible }),
-    });
+    try {
+      const res = await fetch(`${API_BASE_URL}/tracker_cards/${card.id}/visibility`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ is_visible: isVisible }),
+      });
+      if (res.status === 401) {
+        await signOut();
+        return;
+      }
+      if (!res.ok) throw new Error("Could not update tracker visibility.");
+    } catch (err) {
+      setCards((current) => current.map((item) => (item.id === card.id ? { ...item, is_visible: card.is_visible } : item)));
+      setError(err instanceof Error ? err.message : "Could not update tracker visibility.");
+    }
   };
 
   const logValue = async (card: TrackerCard, value: number) => {
+    if (!Number.isFinite(value) || value < 0) {
+      setError("Enter a valid non-negative value.");
+      return;
+    }
     setSavingId(card.id);
+    setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/tracker_entries`, {
         method: "POST",
@@ -121,7 +142,14 @@ function TrackerContent() {
       if (res.ok) {
         setNumericDrafts((current) => ({ ...current, [card.id]: "" }));
         fetchCards();
+      } else if (res.status === 401) {
+        await signOut();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.detail || "Could not log tracker value.");
       }
+    } catch {
+      setError("Could not log tracker value.");
     } finally {
       setSavingId(null);
     }
@@ -136,6 +164,7 @@ function TrackerContent() {
     const draft = editDrafts[card.id];
     if (!draft?.name.trim()) return;
     setSavingId(card.id);
+    setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/tracker_cards/${card.id}`, {
         method: "PATCH",
@@ -150,7 +179,12 @@ function TrackerContent() {
         const updated = await res.json();
         setCards((current) => current.map((item) => (item.id === card.id ? { ...item, ...updated, entries: item.entries } : item)));
         setEditingId(null);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.detail || "Could not update tracker.");
       }
+    } catch {
+      setError("Could not update tracker.");
     } finally {
       setSavingId(null);
     }
@@ -188,6 +222,8 @@ function TrackerContent() {
           )}
         </View>
 
+        {!!error && <Text style={styles.errorState} accessibilityRole="alert">{error}</Text>}
+
         <View style={styles.grid}>
           {loading ? (
             <Text style={styles.emptyState}>Loading trackers...</Text>
@@ -205,7 +241,12 @@ function TrackerContent() {
                         <Text style={styles.cardTitle}>{card.name}</Text>
                       </View>
                       <View style={styles.cardTools}>
-                        <Pressable style={styles.iconButton} onPress={() => startEditing(card)}>
+                        <Pressable
+                          style={styles.iconButton}
+                          onPress={() => startEditing(card)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Edit ${card.name}`}
+                        >
                           <Feather name="edit-2" size={17} color={colors.ink} />
                         </Pressable>
                         <View style={styles.streak}>
@@ -229,10 +270,22 @@ function TrackerContent() {
                         <TrackerGraph card={card} />
                         {card.value_type === "boolean" ? (
                           <View style={styles.actions}>
-                            <Pressable style={styles.actionButton} onPress={() => logValue(card, 1)} disabled={savingId === card.id}>
+                            <Pressable
+                              style={styles.actionButton}
+                              onPress={() => logValue(card, 1)}
+                              disabled={savingId === card.id}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Mark ${card.name} done today`}
+                            >
                               <Feather name="check" size={20} color="#fff" />
                             </Pressable>
-                            <Pressable style={styles.actionButton} onPress={() => logValue(card, 0)} disabled={savingId === card.id}>
+                            <Pressable
+                              style={styles.actionButton}
+                              onPress={() => logValue(card, 0)}
+                              disabled={savingId === card.id}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Mark ${card.name} not done today`}
+                            >
                               <Feather name="x" size={20} color="#fff" />
                             </Pressable>
                           </View>
@@ -371,6 +424,7 @@ const styles = StyleSheet.create({
   primaryActionText: { color: colors.panel, fontWeight: "700" },
   selector: { flexDirection: "row", flexWrap: "wrap", gap: 9, padding: 13, borderRadius: 12, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.panel },
   selectorEmpty: { color: colors.muted },
+  errorState: { borderRadius: 12, backgroundColor: colors.redSoft, color: colors.red, padding: 12, fontWeight: "700" },
   selectorItem: { flexDirection: "row", alignItems: "center", gap: 7, borderRadius: 999, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 11, paddingVertical: 7 },
   selectorText: { color: colors.ink, fontSize: 13 },
   checkbox: { width: 16, height: 16, borderRadius: 4, borderWidth: 1, borderColor: "#9ca3af", alignItems: "center", justifyContent: "center" },

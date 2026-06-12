@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
 import { useAuth } from "../context/AuthContext";
+import { API_BASE_URL } from "../lib/api";
 import styles from "./CalendarView.module.css";
 import Header from "./Header";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 const DAYS_HEADER = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 type DaySummary = {
@@ -36,7 +35,7 @@ function toYMD(d: Date): string {
 }
 
 export default function CalendarView() {
-  const { user, signOut, getAuthHeaders } = useAuth();
+  const { signOut, getAuthHeaders } = useAuth();
   const [viewDate, setViewDate] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState<string>(() => toYMD(new Date()));
   const [daySummary, setDaySummary] = useState<DaySummary | null>(null);
@@ -48,15 +47,19 @@ export default function CalendarView() {
 
   const fetchDaySummary = useCallback(
     async (dateStr: string) => {
+      setDaySummary(null);
       try {
-        const res = await fetch(`${API_BASE}/today_summary?date=${dateStr}`, {
+        const res = await fetch(`${API_BASE_URL}/today_summary?date=${dateStr}`, {
           headers: { ...getAuthHeaders() },
         });
         if (res.status === 401) {
           signOut();
           return;
         }
-        if (!res.ok) return;
+        if (!res.ok) {
+          setDaySummary(null);
+          return;
+        }
         const data = await res.json();
         setDaySummary(data);
       } catch {
@@ -185,4 +188,3 @@ export default function CalendarView() {
     </div>
   );
 }
-

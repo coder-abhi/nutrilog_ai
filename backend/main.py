@@ -1,141 +1,146 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-from openai import OpenAI
-from fastapi.middleware.cors import CORSMiddleware
-import os
-from dotenv import load_dotenv
 import json
-import logging  # for printing time taken by every query
+import logging
+import os
+import time
 
-from fastapi import Depends, HTTPException
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from openai import OpenAI
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from auth import create_access_token, get_current_user
-
-from models import Activity, ActivityInput, ExtractionResponse, ProfileUpdateInput, SignInInput, SignUpInput, TrackerCardInput, TrackerCardUpdateInput, TrackerEntryInput, TrackerVisibilityInput
-from utils import aggregate_summary
-from met_engine import calculate_realtime_burn
-
-
-# Configure logging to write to 'app.log'
-logging.basicConfig(
-    filename='nutrilog_info.log', 
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-
 from crud import (
     create_health_log,
+    create_tracker_card,
     create_user,
+    create_weight_entry,
     get_db,
     get_daily_logs,
-    get_user_by_username_and_password,
-    get_weight_entries,
-    create_weight_entry,
-    create_tracker_card,
-    get_tracker_cards,
     get_tracker_card,
     get_tracker_entries,
+    get_tracker_cards,
+    get_user_by_username_and_password,
+    get_weight_entries,
     set_tracker_card_visibility,
     update_tracker_card,
-    upsert_tracker_entry,
     update_user_profile,
+    upsert_tracker_entry,
+)
+from met_engine import calculate_realtime_burn
+from models import (
+    ActivityInput,
+    ExtractionResponse,
+    ProfileUpdateInput,
+    SignInInput,
+    SignUpInput,
+    TrackerCardInput,
+    TrackerCardUpdateInput,
+    TrackerEntryInput,
+    TrackerVisibilityInput,
+    WeightEntryInput,
+)
+from utils import aggregate_summary
+
+load_dotenv()
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger("nutrilog")
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    raise RuntimeError("OPENAI_API_KEY environment variable is not set")
+
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1")
+OPENAI_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "45"))
+if OPENAI_TIMEOUT_SECONDS <= 0:
+    raise RuntimeError("OPENAI_TIMEOUT_SECONDS must be greater than 0")
+
+client = OpenAI(
+    api_key=OPENAI_API_KEY,
+    timeout=OPENAI_TIMEOUT_SECONDS,
+    max_retries=2,
 )
 
 
-load_dotenv(override=True)
+class AIServiceError(Exception):
+    pass
 
-api_key = os.getenv('OPENAI_API_KEY')
-client = OpenAI()
 
-import time
+def request_ai_json(*, system_prompt: str, user_prompt: str, operation: str) -> dict:
+    start_time = time.perf_counter()
+    try:
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+        )
+        content = response.choices[0].message.content
+        if not content:
+            raise ValueError("AI response did not include content")
+        payload = json.loads(content)
+        if not isinstance(payload, dict):
+            raise ValueError("AI response was not a JSON object")
+        return payload
+    except Exception as exc:
+        logger.warning("%s failed (%s)", operation, type(exc).__name__)
+        raise AIServiceError from exc
+    finally:
+        logger.info("%s took %.4fs", operation, time.perf_counter() - start_time)
 
-def measure_openai_latency(func, *args, **kwargs):
-    start_time = time.time()
-    response = func(*args, **kwargs)
-    end_time = time.time()
 
-    duration = end_time - start_time
-    print(f"⏱️ OpenAI API call took {duration:.4f} seconds")
-    logging.info(f"OpenAI API call took {duration:.4f} seconds")
-
-    return response
 app = FastAPI()
+
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",")
+    if origin.strip()
+]
+if not cors_origins or "*" in cors_origins:
+    raise RuntimeError("CORS_ORIGINS must contain explicit origins and cannot include '*'")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # later restrict this
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
 @app.get("/test")
-def calculate(db: Session = Depends(get_db)):
-    return "Hello, World!"
+def health_check():
+    return {"status": "ok"}
 
-from typing import List
-# from pydantic import BaseModel
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    error = exc.errors()[0]
+    field = ".".join(str(part) for part in error.get("loc", [])[1:])
+    message = error.get("msg", "Invalid request")
+    detail = f"{field}: {message}" if field else message
+    return JSONResponse(status_code=422, content={"detail": detail})
+
 
 @app.middleware("http")
 async def log_time(request, call_next):
-    import time
-    start = time.time()
-
-    response = await call_next(request)
-
-    duration = time.time() - start
-    logging.info(f"{request.url.path} took {duration:.4f}s")
-
-    return response
-
-@app.post("/signup")
-def signup(data: SignUpInput, db: Session = Depends(get_db)):
+    start = time.perf_counter()
     try:
-        user = create_user(
-            session=db,
-            dataObj=data
-        )
-        access_token = create_access_token(data={"sub": user.username})
-        return {
-            "success": True,
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user": {
-                "username": user.username,
-                "weight_kg": user.weight_kg,
-                "target_weight_kg": getattr(user, "target_weight_kg", None),
-                "height_cm": user.height_cm,
-                "gender": user.gender,
-                "activity_level": user.activity_level,
-                "goal": user.goal or "",
-            },
-        }
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/signin")
-def signin(data: SignInInput, db: Session = Depends(get_db)):
-    user = get_user_by_username_and_password(db, data.username, data.password)
-    if user is None:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-    access_token = create_access_token(data={"sub": user.username})
-    return {
-        "success": True,
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": {
-            "username": user.username,
-            "weight_kg": user.weight_kg,
-            "target_weight_kg": getattr(user, "target_weight_kg", None),
-            "height_cm": user.height_cm,
-            "gender": user.gender,
-            "activity_level": user.activity_level,
-            "goal": user.goal or "",
-        },
-    }
+        return await call_next(request)
+    finally:
+        logger.info("%s %s took %.4fs", request.method, request.url.path, time.perf_counter() - start)
 
 
 def _user_payload(user):
@@ -149,16 +154,43 @@ def _user_payload(user):
         "goal": user.goal or "",
     }
 
+@app.post("/signup")
+def signup(data: SignUpInput, db: Session = Depends(get_db)):
+    username = data.username.strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="Username is required.")
+    try:
+        user = create_user(
+            session=db,
+            dataObj=data.model_copy(update={"username": username}),
+        )
+        access_token = create_access_token(data={"sub": user.username})
+        return {
+            "success": True,
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": _user_payload(user),
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/signin")
+def signin(data: SignInInput, db: Session = Depends(get_db)):
+    user = get_user_by_username_and_password(db, data.username.strip(), data.password)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    access_token = create_access_token(data={"sub": user.username})
+    return {
+        "success": True,
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": _user_payload(user),
+    }
+
 
 @app.patch("/profile")
 def edit_profile(data: ProfileUpdateInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    if data.weight_kg <= 0:
-        raise HTTPException(status_code=400, detail="Weight must be greater than 0.")
-    if data.height_cm <= 0:
-        raise HTTPException(status_code=400, detail="Height must be greater than 0.")
-    if data.target_weight_kg is not None and data.target_weight_kg <= 0:
-        raise HTTPException(status_code=400, detail="Target weight must be greater than 0.")
-
     user = update_user_profile(
         db,
         current_user.username,
@@ -189,8 +221,13 @@ def passive_calorie_burned(current_user=Depends(get_current_user)):
 
 
 @app.get("/today_summary")
-def today_summary(date: str | None = None, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    """Fetch aggregated calories/macros and food/activity entries for the user for a given date (YYYY-MM-DD). Defaults to today."""
+def today_summary(
+    date: str | None = None,
+    days: int = Query(default=1, ge=1, le=31),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Fetch one day or an inclusive date range ending on date (YYYY-MM-DD)."""
     from datetime import datetime as dt
     if date:
         try:
@@ -199,7 +236,7 @@ def today_summary(date: str | None = None, db: Session = Depends(get_db), curren
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
     else:
         target_date = None
-    logs = get_daily_logs(db, current_user.username, date=target_date)
+    logs = get_daily_logs(db, current_user.username, date=target_date, days=days)
     calories_intake = 0
     calories_burned = 0
     protein = 0
@@ -261,9 +298,6 @@ def today_summary(date: str | None = None, db: Session = Depends(get_db), curren
         "activities": activities_list,
         "insulin_curves": insulin_curves,
     }
-
-
-
 @app.get("/weight_entries")
 def list_weight_entries(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     """Fetch weight entries for the user, most recent first."""
@@ -272,15 +306,6 @@ def list_weight_entries(db: Session = Depends(get_db), current_user=Depends(get_
         {"value_kg": e.value_kg, "recorded_at": e.recorded_at.isoformat() if e.recorded_at else None}
         for e in entries
     ]
-
-
-
-
-class WeightEntryInput(BaseModel):
-    value_kg: float
-    recorded_at: str | None = None  # optional ISO date "YYYY-MM-DD" or datetime; defaults to now
-
-
 @app.post("/weight_entry")
 def add_weight_entry(data: WeightEntryInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     """Add a weight entry for the user. recorded_at optional (YYYY-MM-DD or full ISO); default now."""
@@ -337,13 +362,9 @@ def list_tracker_cards(db: Session = Depends(get_db), current_user=Depends(get_c
 @app.post("/tracker_cards")
 def add_tracker_card(data: TrackerCardInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     name = data.name.strip()
-    value_type = data.value_type.strip().lower()
+    value_type = data.value_type
     if not name:
         raise HTTPException(status_code=400, detail="Tracker name is required.")
-    if value_type not in {"boolean", "numeric"}:
-        raise HTTPException(status_code=400, detail="value_type must be boolean or numeric.")
-    if data.target_days_per_week < 1 or data.target_days_per_week > 7:
-        raise HTTPException(status_code=400, detail="target_days_per_week must be between 1 and 7.")
     card = create_tracker_card(
         db,
         current_user.username,
@@ -360,8 +381,6 @@ def edit_tracker_card(tracker_id: str, data: TrackerCardUpdateInput, db: Session
     name = data.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Tracker name is required.")
-    if data.target_days_per_week < 1 or data.target_days_per_week > 7:
-        raise HTTPException(status_code=400, detail="target_days_per_week must be between 1 and 7.")
     card = update_tracker_card(
         db,
         current_user.username,
@@ -397,7 +416,7 @@ def add_tracker_entry(data: TrackerEntryInput, db: Session = Depends(get_db), cu
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
     else:
         entry_date = date.today()
-    value = 1 if card.value_type == "boolean" and data.value > 0 else data.value
+    value = (1 if data.value > 0 else 0) if card.value_type == "boolean" else data.value
     entry = upsert_tracker_entry(db, current_user.username, card.id, entry_date, value, add_to_existing=card.value_type == "numeric")
     return {
         "id": entry.id,
@@ -448,31 +467,34 @@ Rules:
 - confidence must be between 0 and 1.
 """
     try:
-        response = measure_openai_latency(
-            client.chat.completions.create,
-            model="gpt-4.1",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": sentence},
-            ],
+        payload = request_ai_json(
+            system_prompt=system_prompt,
+            user_prompt=sentence,
+            operation="tracker extraction",
         )
-        payload = json.loads(response.choices[0].message.content)
-    except Exception as exc:
-        logging.warning(f"Tracker extraction failed: {exc}")
+    except AIServiceError:
         return []
 
     updates = []
     card_by_id = {card.id: card for card in cards}
-    for update in payload.get("updates", []):
+    raw_updates = payload.get("updates", [])
+    if not isinstance(raw_updates, list):
+        return []
+    for update in raw_updates:
+        if not isinstance(update, dict):
+            continue
         tracker_id = update.get("tracker_id")
         card = card_by_id.get(tracker_id)
         if card is None:
             continue
-        confidence = float(update.get("confidence", 0))
+        try:
+            confidence = float(update.get("confidence", 0))
+            raw_value = float(update.get("value", 0))
+        except (TypeError, ValueError):
+            continue
         if confidence < 0.55:
             continue
-        raw_value = float(update.get("value", 0))
-        value = 1 if card.value_type == "boolean" and raw_value > 0 else raw_value
+        value = (1 if raw_value > 0 else 0) if card.value_type == "boolean" else max(0, raw_value)
         entry = upsert_tracker_entry(db, user_id, tracker_id, target_date, value, raw_text=sentence, add_to_existing=card.value_type == "numeric")
         updates.append({
             "tracker_id": tracker_id,
@@ -487,6 +509,10 @@ Rules:
 def analyze_food(data: ActivityInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     from datetime import datetime as dt, timedelta
 
+    sentence = data.sentence.strip()
+    if not sentence:
+        raise HTTPException(status_code=400, detail="Log text is required.")
+
     log_timestamp = None
     if data.date:
         try:
@@ -494,8 +520,6 @@ def analyze_food(data: ActivityInput, db: Session = Depends(get_db), current_use
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
     if log_timestamp and data.log_time_minutes is not None:
-        if data.log_time_minutes < 0 or data.log_time_minutes > 1439:
-            raise HTTPException(status_code=400, detail="Invalid log_time_minutes. Use 0-1439.")
         log_timestamp = log_timestamp + timedelta(minutes=data.log_time_minutes)
 
     user_config = {
@@ -574,31 +598,25 @@ Rules:
 
 """
     
-    response = measure_openai_latency(
-        client.chat.completions.create,
-        model="gpt-4.1",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": data.sentence}
-        ],
-    )
+    try:
+        llm_return = request_ai_json(
+            system_prompt=system_prompt,
+            user_prompt=sentence,
+            operation="health log extraction",
+        )
+        parsed = ExtractionResponse.model_validate(llm_return)
+    except (AIServiceError, ValidationError):
+        raise HTTPException(
+            status_code=502,
+            detail="Could not process this log right now. Please try again.",
+        )
 
-    print("-"*20, "User Prompt", "-"*20)
-    print(data.sentence)
-
-    llm_return = json.loads(response.choices[0].message.content)
-
-    parsed = ExtractionResponse(**llm_return)
-
-    print("-"*20,"PARSED Data","-"*20)
-    print(parsed)
     summary = aggregate_summary(parsed.activities, parsed.foods)
 
-        # ---- save to database ----
     create_health_log(
         session=db,
         user_id=current_user.username,
-        raw_text=data.sentence,
+        raw_text=sentence,
         activities=parsed.activities,
         foods=parsed.foods,
         timestamp=log_timestamp,
@@ -606,7 +624,7 @@ Rules:
     )
 
     tracker_date = (log_timestamp or dt.now()).date()
-    tracker_updates = _extract_tracker_updates(data.sentence, db, current_user.username, tracker_date)
+    tracker_updates = _extract_tracker_updates(sentence, db, current_user.username, tracker_date)
     summary["tracker_updates"] = tracker_updates
 
     return summary
