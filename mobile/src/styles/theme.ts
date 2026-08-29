@@ -32,3 +32,10 @@ export const font = {
   label: 12,
   body: 14,
 };
+
+// Shared plain (no background) inline form-error text style, used wherever a screen shows
+// a single-line validation/request error under a form field.
+export const formErrorText = {
+  color: "#b91c1c",
+  fontSize: 13,
+} as const;

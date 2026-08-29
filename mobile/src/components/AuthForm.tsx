@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-
 import { useAuth } from "@/auth/AuthContext";
 import { GradientScreen } from "@/components/Screen";
 import { colors, shadow } from "@/styles/theme";
+import { validatePositiveNumber } from "@/utils/validation";
 
 type GoalValue = "muscle_gain" | "maintain_weight" | "weight_loss" | "vitamin_focus" | "pcos";
 
@@ -58,17 +59,22 @@ export function AuthForm() {
     const parsedWeight = Number(weightKg);
     const parsedTargetWeight = Number(targetWeightKg);
     const parsedHeight = Number(heightCm);
-    if (weightKg && (!Number.isFinite(parsedWeight) || parsedWeight <= 0)) {
-      setError("Enter a valid weight (kg), or leave it empty.");
+    const weightError = validatePositiveNumber(weightKg, "weight (kg)", { optional: true });
+    if (weightError) {
+      setError(weightError);
       return;
     }
-    if (heightCm && (!Number.isFinite(parsedHeight) || parsedHeight <= 0)) {
-      setError("Enter a valid height (cm), or leave it empty.");
+    const heightError = validatePositiveNumber(heightCm, "height (cm)", { optional: true });
+    if (heightError) {
+      setError(heightError);
       return;
     }
-    if (selectedGoals.includes("weight_loss") && targetWeightKg && (!Number.isFinite(parsedTargetWeight) || parsedTargetWeight <= 0)) {
-      setError("Enter a valid target weight (kg), or leave it empty.");
-      return;
+    if (selectedGoals.includes("weight_loss")) {
+      const targetWeightError = validatePositiveNumber(targetWeightKg, "target weight (kg)", { optional: true });
+      if (targetWeightError) {
+        setError(targetWeightError);
+        return;
+      }
     }
     setSubmitting(true);
     const result = isSignUp

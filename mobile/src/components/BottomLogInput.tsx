@@ -13,8 +13,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useAuth } from "@/auth/AuthContext";
-import { API_BASE_URL } from "@/config/api";
+import { SignedOutError, useApi } from "@/hooks/useApi";
 import { colors } from "@/styles/theme";
 import { formatSliderTime } from "@/utils/date";
 
@@ -33,7 +32,7 @@ function getCurrentMinutes() {
 }
 
 export function BottomLogInput({ logDate, onLogged }: { logDate: string; onLogged: (data: LogResult) => void }) {
-  const { getAuthHeaders, signOut } = useAuth();
+  const { authedFetch } = useApi();
   const insets = useSafeAreaInsets();
   const [input, setInput] = useState("");
   const [logTimeMinutes, setLogTimeMinutes] = useState(() => getCurrentMinutes());
@@ -66,25 +65,20 @@ export function BottomLogInput({ logDate, onLogged }: { logDate: string; onLogge
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/log_input`, {
+      const data = await authedFetch<LogResult>("/log_input", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sentence: userText, date: logDate, log_time_minutes: logTimeMinutes }),
+        fallbackErrorMessage: "Request failed",
       });
-      const data = await response.json();
-      if (response.status === 401) {
-        await signOut();
-        setErrorMessage("Session expired. Please sign in again.");
-        return;
-      }
-      if (!response.ok) {
-        setErrorMessage(data.detail || "Request failed");
-        return;
-      }
       onLogged(data);
       setInput("");
       setLogTimeMinutes(getCurrentMinutes());
     } catch (err) {
+      if (err instanceof SignedOutError) {
+        setErrorMessage("Session expired. Please sign in again.");
+        return;
+      }
       setErrorMessage(err instanceof Error ? err.message : "Network error.");
     } finally {
       setIsLoading(false);

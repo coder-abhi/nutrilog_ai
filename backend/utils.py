@@ -1,6 +1,17 @@
+from datetime import date, datetime
 from typing import List
 
+from fastapi import HTTPException
+
 from models import Activity, Food
+
+
+def parse_date_param(value: str) -> date:
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+
 
 def aggregate_summary(activities: List[Activity], foods: List[Food]) -> dict:
     return {

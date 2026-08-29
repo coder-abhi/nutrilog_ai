@@ -7,9 +7,11 @@ import { AuthGate } from "@/components/AuthGate";
 import { Header } from "@/components/Header";
 import { GradientScreen } from "@/components/Screen";
 import { Segmented } from "@/components/Segmented";
-import { API_BASE_URL } from "@/config/api";
-import { colors, shadow } from "@/styles/theme";
-import { toYMD } from "@/utils/date";
+import { SignedOutError, useApi } from "@/hooks/useApi";
+import { colors, formErrorText, shadow } from "@/styles/theme";
+import { evenXPosition, normalizeToPercent } from "@/utils/chart";
+import { formatEntryDate, formatMonthShort, toYMD } from "@/utils/date";
+import { validatePositiveNumber } from "@/utils/validation";
 
 type WeightEntry = { value_kg: number; recorded_at: string | null };
 type RangeKey = "year" | "all";
@@ -28,7 +30,8 @@ export default function WeightTrackerPage() {
 }
 
 function WeightTrackerContent() {
-  const { user, signOut, getAuthHeaders } = useAuth();
+  const { user } = useAuth();
+  const { authedFetch } = useApi();
   const [entries, setEntries] = useState<WeightEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [logWeightValue, setLogWeightValue] = useState("");
@@ -42,20 +45,18 @@ function WeightTrackerContent() {
     if (!user?.username) return;
     setLoadError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/weight_entries`, { headers: { ...getAuthHeaders() } });
-      if (res.status === 401) {
-        await signOut();
-        return;
-      }
-      if (!res.ok) throw new Error("Could not load weight entries.");
-      setEntries(await res.json());
+      const data = await authedFetch<WeightEntry[]>("/weight_entries", {
+        fallbackErrorMessage: "Could not load weight entries.",
+      });
+      setEntries(data);
     } catch (err) {
+      if (err instanceof SignedOutError) return;
       setEntries([]);
       setLoadError(err instanceof Error ? err.message : "Could not load weight entries.");
     } finally {
       setLoading(false);
     }
-  }, [getAuthHeaders, signOut, user?.username]);
+  }, [authedFetch, user?.username]);
 
   useEffect(() => {
     fetchWeights();
@@ -85,9 +86,9 @@ function WeightTrackerContent() {
   const max = values.length ? Math.max(...values) + 5 : currentWeightKg + 5;
   const min = values.length ? Math.max(0, Math.min(...values) - 5) : Math.max(0, currentWeightKg - 5);
   const points = visible
-    .map((entry, index) => `${(visible.length - 1 ? index / (visible.length - 1) : 0.5) * 100},${((max - entry.value_kg) / (max - min || 1)) * 100}`)
+    .map((entry, index) => `${evenXPosition(index, visible.length)},${100 - normalizeToPercent(entry.value_kg, min, max)}`)
     .join(" ");
-  const targetY = ((max - targetWeightKg) / (max - min || 1)) * 100;
+  const targetY = 100 - normalizeToPercent(targetWeightKg, min, max);
 
   const xTicks = useMemo(() => {
     if (visible.length === 0) return [];
@@ -100,40 +101,34 @@ function WeightTrackerContent() {
       seen.add(idx);
       const entry = visible[idx];
       if (!entry.hasDate) continue;
-      const pct = visible.length - 1 ? (idx / (visible.length - 1)) * 100 : 50;
-      ticks.push({ pct, label: new Date(entry.sortTime).toLocaleDateString(undefined, { month: "short" }) });
+      const pct = evenXPosition(idx, visible.length);
+      ticks.push({ pct, label: formatMonthShort(entry.sortTime) });
     }
     return ticks;
   }, [visible]);
 
   const logWeight = async () => {
-    const value = Number(logWeightValue);
-    if (!value || value <= 0) {
-      setError("Enter a valid weight (kg).");
+    const validationError = validatePositiveNumber(logWeightValue, "weight (kg)");
+    if (validationError) {
+      setError(validationError);
       return;
     }
+    const value = Number(logWeightValue);
     setSubmitting(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/weight_entry`, {
+      await authedFetch("/weight_entry", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value_kg: value, recorded_at: logWeightDate || undefined }),
+        fallbackErrorMessage: "Failed to log weight.",
       });
-      const data = await res.json();
-      if (res.status === 401) {
-        await signOut();
-        return;
-      }
-      if (!res.ok) {
-        setError(data.detail || "Failed to log weight.");
-        return;
-      }
       setLogWeightValue("");
       setLogWeightDate(toYMD(new Date()));
       fetchWeights();
-    } catch {
-      setError("Network error.");
+    } catch (err) {
+      if (err instanceof SignedOutError) return;
+      setError(err instanceof Error ? err.message : "Network error.");
     } finally {
       setSubmitting(false);
     }
@@ -184,8 +179,8 @@ function WeightTrackerContent() {
                     {visible.map((entry, index) => (
                       <Circle
                         key={`${entry.recorded_at ?? "point"}-${index}`}
-                        cx={(visible.length - 1 ? index / (visible.length - 1) : 0.5) * 100}
-                        cy={((max - entry.value_kg) / (max - min || 1)) * 100}
+                        cx={evenXPosition(index, visible.length)}
+                        cy={100 - normalizeToPercent(entry.value_kg, min, max)}
                         r="1.5"
                         fill={colors.blue}
                         stroke="#fff"
@@ -219,7 +214,7 @@ function WeightTrackerContent() {
             entries.map((entry, i) => (
               <View key={`${entry.recorded_at ?? "na"}-${i}`} style={styles.entryRow}>
                 <Text style={styles.entryWeight}>{entry.value_kg.toFixed(1)} kg</Text>
-                <Text style={styles.meta}>{formatDate(entry.recorded_at)}</Text>
+                <Text style={styles.meta}>{formatEntryDate(entry.recorded_at)}</Text>
               </View>
             ))
           )}
@@ -227,11 +222,6 @@ function WeightTrackerContent() {
       </ScrollView>
     </GradientScreen>
   );
-}
-
-function formatDate(iso: string | null) {
-  if (!iso) return "-";
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 function Summary({ label, value }: { label: string; value: string }) {
@@ -269,7 +259,7 @@ const styles = StyleSheet.create({
   input: { minHeight: 43, borderRadius: 8, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 12, color: colors.ink, fontSize: 16 },
   button: { alignSelf: "flex-start", borderRadius: 8, backgroundColor: colors.ink, paddingHorizontal: 16, paddingVertical: 10 },
   buttonText: { color: "#f9fafb", fontWeight: "600" },
-  error: { color: "#b91c1c", fontSize: 13 },
+  error: formErrorText,
   chartHeader: { gap: 12, alignItems: "flex-start" },
   chartGrid: { height: 240, flexDirection: "row", gap: 10 },
   yAxis: { justifyContent: "space-between", paddingVertical: 2 },

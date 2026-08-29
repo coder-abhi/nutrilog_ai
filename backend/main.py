@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import time
+from datetime import date, datetime, timedelta
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -44,7 +45,7 @@ from models import (
     TrackerVisibilityInput,
     WeightEntryInput,
 )
-from utils import aggregate_summary
+from utils import aggregate_summary, parse_date_param
 
 load_dotenv()
 
@@ -229,14 +230,7 @@ def today_summary(
     current_user=Depends(get_current_user),
 ):
     """Fetch one day or an inclusive date range ending on date (YYYY-MM-DD)."""
-    from datetime import datetime as dt
-    if date:
-        try:
-            target_date = dt.strptime(date, "%Y-%m-%d").date()
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
-    else:
-        target_date = None
+    target_date = parse_date_param(date) if date else None
     logs = get_daily_logs(db, current_user.username, date=target_date, days=days)
     calories_intake = 0
     calories_burned = 0
@@ -310,18 +304,34 @@ def list_weight_entries(db: Session = Depends(get_db), current_user=Depends(get_
 @app.post("/weight_entry")
 def add_weight_entry(data: WeightEntryInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     """Add a weight entry for the user. recorded_at optional (YYYY-MM-DD or full ISO); default now."""
-    from datetime import datetime as dt
     recorded_at = None
     if data.recorded_at:
         try:
             if "T" in data.recorded_at:
-                recorded_at = dt.fromisoformat(data.recorded_at.replace("Z", "+00:00"))
+                recorded_at = datetime.fromisoformat(data.recorded_at.replace("Z", "+00:00"))
             else:
-                recorded_at = dt.strptime(data.recorded_at, "%Y-%m-%d")
+                recorded_at = datetime.strptime(data.recorded_at, "%Y-%m-%d")
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid recorded_at. Use YYYY-MM-DD.")
     entry = create_weight_entry(db, current_user.username, data.value_kg, recorded_at=recorded_at)
     return {"value_kg": entry.value_kg, "recorded_at": entry.recorded_at.isoformat() if entry.recorded_at else None}
+
+
+def _resolve_tracker_targets(value_type: str, target_value: float | None, target_days_per_week: int | None) -> tuple[int, float | None]:
+    if value_type == "numeric":
+        if not target_value or target_value <= 0:
+            raise HTTPException(status_code=400, detail="Weekly target is required for numeric trackers.")
+        # Numeric trackers target a total quantity/week (e.g. 50 pushups), not a count of
+        # days, so target_days_per_week doesn't apply to them; always store the full week.
+        return 7, target_value
+    return target_days_per_week or 7, None
+
+
+def _get_owned_tracker_or_404(db: Session, user_id: str, tracker_id: str):
+    card = get_tracker_card(db, user_id, tracker_id)
+    if card is None:
+        raise HTTPException(status_code=404, detail="Tracker card not found.")
+    return card
 
 
 def _tracker_card_payload(card, entries_by_card=None):
@@ -349,8 +359,6 @@ def _tracker_card_payload(card, entries_by_card=None):
 
 @app.get("/tracker_cards")
 def list_tracker_cards(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    from datetime import date, timedelta
-
     cards = get_tracker_cards(db, current_user.username)
     end_date = date.today()
     start_date = end_date - timedelta(days=89)
@@ -367,14 +375,7 @@ def add_tracker_card(data: TrackerCardInput, db: Session = Depends(get_db), curr
     value_type = data.value_type
     if not name:
         raise HTTPException(status_code=400, detail="Tracker name is required.")
-    if value_type == "numeric":
-        if not data.target_value or data.target_value <= 0:
-            raise HTTPException(status_code=400, detail="Weekly target is required for numeric trackers.")
-        target_days_per_week = 7
-        target_value = data.target_value
-    else:
-        target_days_per_week = data.target_days_per_week or 7
-        target_value = None
+    target_days_per_week, target_value = _resolve_tracker_targets(value_type, data.target_value, data.target_days_per_week)
     card = create_tracker_card(
         db,
         current_user.username,
@@ -392,17 +393,8 @@ def edit_tracker_card(tracker_id: str, data: TrackerCardUpdateInput, db: Session
     name = data.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Tracker name is required.")
-    existing = get_tracker_card(db, current_user.username, tracker_id)
-    if existing is None:
-        raise HTTPException(status_code=404, detail="Tracker card not found.")
-    if existing.value_type == "numeric":
-        if not data.target_value or data.target_value <= 0:
-            raise HTTPException(status_code=400, detail="Weekly target is required for numeric trackers.")
-        target_days_per_week = 7
-        target_value = data.target_value
-    else:
-        target_days_per_week = data.target_days_per_week or 7
-        target_value = None
+    existing = _get_owned_tracker_or_404(db, current_user.username, tracker_id)
+    target_days_per_week, target_value = _resolve_tracker_targets(existing.value_type, data.target_value, data.target_days_per_week)
     card = update_tracker_card(
         db,
         current_user.username,
@@ -427,18 +419,8 @@ def update_tracker_visibility(tracker_id: str, data: TrackerVisibilityInput, db:
 
 @app.post("/tracker_entries")
 def add_tracker_entry(data: TrackerEntryInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    from datetime import datetime as dt, date
-
-    card = get_tracker_card(db, current_user.username, data.tracker_id)
-    if card is None:
-        raise HTTPException(status_code=404, detail="Tracker card not found.")
-    if data.date:
-        try:
-            entry_date = dt.strptime(data.date, "%Y-%m-%d").date()
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
-    else:
-        entry_date = date.today()
+    card = _get_owned_tracker_or_404(db, current_user.username, data.tracker_id)
+    entry_date = parse_date_param(data.date) if data.date else date.today()
     value = (1 if data.value > 0 else 0) if card.value_type == "boolean" else data.value
     entry = upsert_tracker_entry(db, current_user.username, card.id, entry_date, value, add_to_existing=card.value_type == "numeric")
     if card.value_type == "numeric" and entry.value < 0:
@@ -533,8 +515,6 @@ Rules:
 
 @app.post("/log_input")
 def analyze_food(data: ActivityInput, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    from datetime import datetime as dt, timedelta
-
     sentence = data.sentence.strip()
     if not sentence:
         raise HTTPException(status_code=400, detail="Log text is required.")
@@ -542,7 +522,7 @@ def analyze_food(data: ActivityInput, db: Session = Depends(get_db), current_use
     log_timestamp = None
     if data.date:
         try:
-            log_timestamp = dt.strptime(data.date, "%Y-%m-%d")
+            log_timestamp = datetime.strptime(data.date, "%Y-%m-%d")
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
     if log_timestamp and data.log_time_minutes is not None:
@@ -661,7 +641,7 @@ Rules:
         insulin_curve=json.dumps([point.model_dump() for point in parsed.insulin_curve])
     )
 
-    tracker_date = (log_timestamp or dt.now()).date()
+    tracker_date = (log_timestamp or datetime.now()).date()
     tracker_updates = _extract_tracker_updates(sentence, db, current_user.username, tracker_date)
     summary["tracker_updates"] = tracker_updates
 

@@ -7,6 +7,7 @@ import { AuthGate } from "@/components/AuthGate";
 import { Header } from "@/components/Header";
 import { GradientScreen } from "@/components/Screen";
 import { colors, shadow } from "@/styles/theme";
+import { validatePositiveNumber } from "@/utils/validation";
 
 const activityOptions = ["sedentary", "low", "moderate", "high", "very_high"];
 const genderOptions = ["male", "female"];
@@ -54,16 +55,19 @@ function EditProfileContent() {
     const parsedTarget = Number(targetWeightKg);
     const parsedHeight = Number(heightCm);
 
-    if (!parsedWeight || parsedWeight <= 0) {
-      setError("Enter a valid current weight.");
+    const weightError = validatePositiveNumber(weightKg, "current weight");
+    if (weightError) {
+      setError(weightError);
       return;
     }
-    if (!parsedHeight || parsedHeight <= 0) {
-      setError("Enter a valid height.");
+    const heightError = validatePositiveNumber(heightCm, "height");
+    if (heightError) {
+      setError(heightError);
       return;
     }
-    if (targetWeightKg.trim() && (!parsedTarget || parsedTarget <= 0)) {
-      setError("Enter a valid target weight, or leave it empty.");
+    const targetWeightError = validatePositiveNumber(targetWeightKg, "target weight", { optional: true });
+    if (targetWeightError) {
+      setError(targetWeightError);
       return;
     }
 

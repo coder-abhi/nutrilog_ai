@@ -1,14 +1,13 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { useAuth } from "@/auth/AuthContext";
 import { AuthGate } from "@/components/AuthGate";
 import { Header } from "@/components/Header";
 import { GradientScreen } from "@/components/Screen";
-import { API_BASE_URL } from "@/config/api";
+import { SignedOutError, useApi } from "@/hooks/useApi";
 import { colors, shadow } from "@/styles/theme";
 import type { ActivityEntry, FoodEntry, SummaryData } from "@/types";
-import { formatLongDate, toYMD } from "@/utils/date";
+import { formatLongDate, formatMonthYear, toYMD } from "@/utils/date";
 
 const daysHeader = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -37,7 +36,7 @@ export default function CalendarPage() {
 }
 
 function CalendarContent() {
-  const { signOut, getAuthHeaders } = useAuth();
+  const { authedFetch } = useApi();
   const [viewDate, setViewDate] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState(() => toYMD(new Date()));
   const [daySummary, setDaySummary] = useState<DaySummary | null>(null);
@@ -45,30 +44,23 @@ function CalendarContent() {
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
-  const monthLabel = viewDate.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const monthLabel = formatMonthYear(viewDate);
 
   const fetchDaySummary = useCallback(
     async (dateStr: string) => {
       setLoading(true);
       setDaySummary(null);
       try {
-        const res = await fetch(`${API_BASE_URL}/today_summary?date=${dateStr}`, { headers: { ...getAuthHeaders() } });
-        if (res.status === 401) {
-          await signOut();
-          return;
-        }
-        if (!res.ok) {
-          setDaySummary(null);
-          return;
-        }
-        setDaySummary(await res.json());
-      } catch {
+        const data = await authedFetch<DaySummary>(`/today_summary?date=${dateStr}`);
+        setDaySummary(data);
+      } catch (err) {
+        if (err instanceof SignedOutError) return;
         setDaySummary(null);
       } finally {
         setLoading(false);
       }
     },
-    [getAuthHeaders, signOut],
+    [authedFetch],
   );
 
   useEffect(() => {

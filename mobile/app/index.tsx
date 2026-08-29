@@ -9,9 +9,13 @@ import { DashboardTrackers } from "@/components/DashboardTrackers";
 import { Header } from "@/components/Header";
 import { GradientScreen } from "@/components/Screen";
 import { Segmented } from "@/components/Segmented";
-import { API_BASE_URL } from "@/config/api";
+import { SignedOutError, useApi } from "@/hooks/useApi";
 import { colors, shadow } from "@/styles/theme";
 import type { SummaryData } from "@/types";
+import { ApiError } from "@/utils/apiClient";
+import { getCached, setCached } from "@/utils/cache";
+import { normalizeToPercent } from "@/utils/chart";
+import { PASSIVE_CALORIE_CACHE_KEY, dashboardSummaryCacheKey } from "@/utils/cacheKeys";
 import { formatDisplayDate, formatHour, toYMD } from "@/utils/date";
 
 type DashboardRange = "today" | "week" | "month";
@@ -35,7 +39,8 @@ export default function DashboardPage() {
 }
 
 function DashboardContent() {
-  const { user, signOut, getAuthHeaders } = useAuth();
+  const { user } = useAuth();
+  const { authedFetch } = useApi();
   const [summaryData, setSummaryData] = useState<SummaryData>(emptySummary);
   const [insulinCurves, setInsulinCurves] = useState<InsulinCurve[]>([]);
   const [selectedDate] = useState(() => toYMD(new Date()));
@@ -47,15 +52,12 @@ function DashboardContent() {
   const fetchSummaryForRange = useCallback(
     async (date: string, days: number) => {
       if (!user?.username) return null;
-      const res = await fetch(`${API_BASE_URL}/today_summary?date=${date}&days=${days}`, { headers: { ...getAuthHeaders() } });
-      if (res.status === 401) {
-        await signOut();
-        return null;
-      }
-      if (!res.ok) throw new Error("Could not load dashboard data.");
-      return res.json();
+      return authedFetch<{ summary: SummaryData; insulin_curves: InsulinCurve[] }>(
+        `/today_summary?date=${date}&days=${days}`,
+        { fallbackErrorMessage: "Could not load dashboard data." },
+      );
     },
-    [getAuthHeaders, signOut, user?.username],
+    [authedFetch, user?.username],
   );
 
   const fetchDashboardSummary = useCallback(async () => {
@@ -65,7 +67,9 @@ function DashboardContent() {
       if (!result) return;
       setSummaryData({ ...emptySummary, ...result.summary });
       setInsulinCurves(result.insulin_curves ?? []);
-    } catch {
+      setCached(dashboardSummaryCacheKey(selectedDate, selectedRangeDays), result);
+    } catch (err) {
+      if (err instanceof SignedOutError) return;
       setSummaryData(emptySummary);
       setInsulinCurves([]);
     }
@@ -74,21 +78,45 @@ function DashboardContent() {
   const fetchPassiveCalorie = useCallback(async () => {
     if (!user?.username) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/passive_calorie_burned`, { headers: { ...getAuthHeaders() } });
-      if (res.status === 401) {
-        await signOut();
-        return;
-      }
-      if (res.ok) setPassiveCalorie((await res.json()) ?? 0);
-    } catch {
+      const value = await authedFetch<number>("/passive_calorie_burned");
+      setPassiveCalorie(value ?? 0);
+      setCached(PASSIVE_CALORIE_CACHE_KEY, value ?? 0);
+    } catch (err) {
+      if (err instanceof SignedOutError || err instanceof ApiError) return;
       setPassiveCalorie(0);
     }
-  }, [getAuthHeaders, signOut, user?.username]);
+  }, [authedFetch, user?.username]);
+
+  // Paint the last cached response immediately (returning users see data with no delay,
+  // even if the backend is cold-starting), then refresh from the network in the background.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const cached = await getCached<{ summary: SummaryData; insulin_curves: InsulinCurve[] }>(
+        dashboardSummaryCacheKey(selectedDate, selectedRangeDays),
+      );
+      if (cached && active) {
+        setSummaryData({ ...emptySummary, ...cached.summary });
+        setInsulinCurves(cached.insulin_curves ?? []);
+      }
+      fetchDashboardSummary();
+    })();
+    return () => {
+      active = false;
+    };
+  }, [fetchDashboardSummary, selectedDate, selectedRangeDays]);
 
   useEffect(() => {
-    fetchDashboardSummary();
-    fetchPassiveCalorie();
-  }, [fetchDashboardSummary, fetchPassiveCalorie]);
+    let active = true;
+    (async () => {
+      const cached = await getCached<number>(PASSIVE_CALORIE_CACHE_KEY);
+      if (cached != null && active) setPassiveCalorie(cached);
+      fetchPassiveCalorie();
+    })();
+    return () => {
+      active = false;
+    };
+  }, [fetchPassiveCalorie]);
 
   const insulinChart = useMemo(() => {
     const contributions = new Map<number, number>();
@@ -111,8 +139,8 @@ function DashboardContent() {
     // Insulin sits near the baseline (8) at rest; treat small deviations as "back to normal".
     const NORMAL_MAX = 14;
     const points = series.map((point) => ({
-      x: (point.minute / 1439) * 100,
-      y: 100 - (point.value / maxValue) * 100,
+      x: normalizeToPercent(point.minute, 0, 1439),
+      y: 100 - normalizeToPercent(point.value, 0, maxValue),
       normal: point.value <= NORMAL_MAX,
     }));
     const segments: { d: string; normal: boolean }[] = [];

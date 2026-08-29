@@ -2,12 +2,12 @@ import { router } from "expo-router";
 import React, { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { useAuth } from "@/auth/AuthContext";
 import { AuthGate } from "@/components/AuthGate";
 import { Header } from "@/components/Header";
 import { PlainScreen } from "@/components/Screen";
-import { API_BASE_URL } from "@/config/api";
-import { colors } from "@/styles/theme";
+import { SignedOutError, useApi } from "@/hooks/useApi";
+import { colors, formErrorText } from "@/styles/theme";
+import { validatePositiveNumber } from "@/utils/validation";
 
 export default function NewTrackerPage() {
   return (
@@ -18,7 +18,7 @@ export default function NewTrackerPage() {
 }
 
 function NewTrackerContent() {
-  const { getAuthHeaders, signOut } = useAuth();
+  const { authedFetch } = useApi();
   const [name, setName] = useState("");
   const [valueType, setValueType] = useState<"boolean" | "numeric">("boolean");
   const [targetDays, setTargetDays] = useState(7);
@@ -32,33 +32,29 @@ function NewTrackerContent() {
       setError("Name is required.");
       return;
     }
-    if (valueType === "numeric" && (!targetValue || Number(targetValue) <= 0)) {
-      setError("Enter a valid weekly target.");
-      return;
+    if (valueType === "numeric") {
+      const validationError = validatePositiveNumber(targetValue, "weekly target");
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
     }
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/tracker_cards`, {
+      await authedFetch("/tracker_cards", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           valueType === "numeric"
             ? { name, value_type: valueType, target_value: Number(targetValue), description }
             : { name, value_type: valueType, target_days_per_week: targetDays, description },
         ),
+        fallbackErrorMessage: "Could not create tracker.",
       });
-      const data = await res.json();
-      if (res.status === 401) {
-        await signOut();
-        return;
-      }
-      if (!res.ok) {
-        setError(data.detail || "Could not create tracker.");
-        return;
-      }
       router.push("/tracker");
     } catch (err) {
+      if (err instanceof SignedOutError) return;
       setError(err instanceof Error ? err.message : "Network error.");
     } finally {
       setSaving(false);
@@ -157,7 +153,7 @@ const styles = StyleSheet.create({
   dayChipActive: { backgroundColor: colors.ink, borderColor: colors.ink },
   dayChipText: { color: colors.ink, fontWeight: "700" },
   dayChipTextActive: { color: colors.panel },
-  error: { color: "#b91c1c", fontSize: 13 },
+  error: formErrorText,
   actions: { flexDirection: "row", gap: 10 },
   secondary: { flex: 1, minHeight: 43, borderRadius: 10, borderWidth: 1, borderColor: "#d1d5db", alignItems: "center", justifyContent: "center" },
   primary: { flex: 1, minHeight: 43, borderRadius: 10, backgroundColor: colors.ink, alignItems: "center", justifyContent: "center" },

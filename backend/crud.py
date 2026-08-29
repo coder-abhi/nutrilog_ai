@@ -88,8 +88,7 @@ class UserDB(Base):
     gender = Column(String, nullable=False)  # male | female | other
     activity_level = Column(String, nullable=False)  # sedentary | low | moderate | high | very_high
     created_at = Column(DateTime, default=datetime.utcnow)
-    goal=Column[str](String,nullable=True)
-    goals = Column(Text, nullable=True)  # JSON-encoded list[str]; supersedes `goal`
+    goals = Column(Text, nullable=True)  # JSON-encoded list[str]
 
 
 class WeightEntryDB(Base):

@@ -1,8 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
-import { API_BASE_URL } from "@/config/api";
 import type { User } from "@/types";
+import { apiFetch } from "@/utils/apiClient";
 
 const STORAGE_KEY = "daily_log_auth";
 
@@ -62,15 +62,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = useCallback(
     async (username: string, password: string) => {
       try {
-        const res = await fetch(`${API_BASE_URL}/signin`, {
+        const data = await apiFetch<{ user: User; access_token?: string }>("/signin", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username, password }),
+          fallbackErrorMessage: "Sign in failed",
         });
-        const data = await res.json();
-        if (!res.ok) return { success: false, error: data.detail || "Sign in failed" };
         if (!data.access_token) return { success: false, error: "No token received" };
-        await persistAuth(data.user as User, data.access_token as string);
+        await persistAuth(data.user, data.access_token);
         return { success: true };
       } catch (err) {
         return { success: false, error: err instanceof Error ? err.message : "Network error" };
@@ -82,15 +81,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = useCallback(
     async (payload: SignUpPayload) => {
       try {
-        const res = await fetch(`${API_BASE_URL}/signup`, {
+        const data = await apiFetch<{ user: User; access_token?: string }>("/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
+          fallbackErrorMessage: "Sign up failed",
         });
-        const data = await res.json();
-        if (!res.ok) return { success: false, error: data.detail || "Sign up failed" };
         if (!data.access_token) return { success: false, error: "No token received" };
-        await persistAuth(data.user as User, data.access_token as string);
+        await persistAuth(data.user, data.access_token);
         return { success: true };
       } catch (err) {
         return { success: false, error: err instanceof Error ? err.message : "Network error" };
@@ -103,17 +101,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (payload: Omit<User, "username">) => {
       if (!token) return { success: false, error: "You are not signed in." };
       try {
-        const res = await fetch(`${API_BASE_URL}/profile`, {
+        const data = await apiFetch<{ user: User }>("/profile", {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify(payload),
+          fallbackErrorMessage: "Profile update failed",
         });
-        const data = await res.json();
-        if (!res.ok) return { success: false, error: data.detail || "Profile update failed" };
-        await persistAuth(data.user as User, token);
+        await persistAuth(data.user, token);
         return { success: true };
       } catch (err) {
         return { success: false, error: err instanceof Error ? err.message : "Network error" };

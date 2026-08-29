@@ -3,15 +3,18 @@ import { Link } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { useAuth } from "@/auth/AuthContext";
 import { AuthGate } from "@/components/AuthGate";
 import { Header } from "@/components/Header";
 import { PlainScreen } from "@/components/Screen";
-import { API_BASE_URL } from "@/config/api";
+import { SignedOutError, useApi } from "@/hooks/useApi";
 import { colors, shadow } from "@/styles/theme";
 import type { TrackerCard } from "@/types";
-import { toYMD } from "@/utils/date";
+import { TRACKER_CARDS_CACHE_KEY } from "@/utils/cacheKeys";
+import { getCached, setCached } from "@/utils/cache";
+import { normalizeToPercent } from "@/utils/chart";
+import { formatWeekday, pastDays, toYMD } from "@/utils/date";
 import { calculateStreak } from "@/utils/streak";
+import { validatePositiveNumber } from "@/utils/validation";
 
 type EditDraft = {
   name: string;
@@ -19,15 +22,6 @@ type EditDraft = {
   target_value: string;
   description: string;
 };
-
-function pastDays(count: number) {
-  const today = new Date();
-  return Array.from({ length: count }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() - (count - 1 - index));
-    return toYMD(date);
-  });
-}
 
 function makeEditDraft(card: TrackerCard): EditDraft {
   return {
@@ -47,7 +41,7 @@ export default function TrackerPage() {
 }
 
 function TrackerContent() {
-  const { getAuthHeaders, signOut } = useAuth();
+  const { authedFetch } = useApi();
   const [cards, setCards] = useState<TrackerCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -56,45 +50,63 @@ function TrackerContent() {
   const [editDrafts, setEditDrafts] = useState<Record<string, EditDraft>>({});
   const [error, setError] = useState<string | null>(null);
 
-  const fetchCards = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`${API_BASE_URL}/tracker_cards`, { headers: { ...getAuthHeaders() } });
-      if (res.status === 401) {
-        await signOut();
-        return;
+  const fetchCards = useCallback(
+    async (opts: { silent?: boolean } = {}) => {
+      if (!opts.silent) setLoading(true);
+      setError(null);
+      try {
+        const data = await authedFetch<TrackerCard[]>("/tracker_cards", {
+          fallbackErrorMessage: "Could not load trackers.",
+        });
+        setCards(data);
+        setCached(TRACKER_CARDS_CACHE_KEY, data);
+      } catch (err) {
+        if (err instanceof SignedOutError) return;
+        setError(err instanceof Error ? err.message : "Could not load trackers.");
+      } finally {
+        setLoading(false);
       }
-      if (!res.ok) throw new Error("Could not load trackers.");
-      setCards(await res.json());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load trackers.");
-    } finally {
-      setLoading(false);
-    }
-  }, [getAuthHeaders, signOut]);
+    },
+    [authedFetch],
+  );
 
   useEffect(() => {
-    fetchCards();
+    let active = true;
+    (async () => {
+      const cached = await getCached<TrackerCard[]>(TRACKER_CARDS_CACHE_KEY);
+      if (cached && active) {
+        setCards(cached);
+        setLoading(false);
+      }
+      fetchCards({ silent: !!cached });
+    })();
+    return () => {
+      active = false;
+    };
   }, [fetchCards]);
 
   const visibleCards = useMemo(() => cards.filter((card) => card.is_visible), [cards]);
+
+  // Compute streaks once per card list change, not on every render. Otherwise typing into
+  // one tracker's numeric input (which lives in sibling state, numericDrafts) would re-run
+  // calculateStreak's up-to-90-day loop for every visible card on every keystroke.
+  const cardsWithStreak = useMemo(
+    () => visibleCards.map((card) => ({ card, streak: calculateStreak(card) })),
+    [visibleCards],
+  );
 
   const setVisibility = async (card: TrackerCard, isVisible: boolean) => {
     setError(null);
     setCards((current) => current.map((item) => (item.id === card.id ? { ...item, is_visible: isVisible } : item)));
     try {
-      const res = await fetch(`${API_BASE_URL}/tracker_cards/${card.id}/visibility`, {
+      await authedFetch(`/tracker_cards/${card.id}/visibility`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_visible: isVisible }),
+        fallbackErrorMessage: "Could not update tracker visibility.",
       });
-      if (res.status === 401) {
-        await signOut();
-        return;
-      }
-      if (!res.ok) throw new Error("Could not update tracker visibility.");
     } catch (err) {
+      if (err instanceof SignedOutError) return;
       setCards((current) => current.map((item) => (item.id === card.id ? { ...item, is_visible: card.is_visible } : item)));
       setError(err instanceof Error ? err.message : "Could not update tracker visibility.");
     }
@@ -108,22 +120,17 @@ function TrackerContent() {
     setSavingId(card.id);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/tracker_entries`, {
+      await authedFetch("/tracker_entries", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tracker_id: card.id, value, date: toYMD(new Date()) }),
+        fallbackErrorMessage: "Could not log tracker value.",
       });
-      if (res.ok) {
-        setNumericDrafts((current) => ({ ...current, [card.id]: "" }));
-        fetchCards();
-      } else if (res.status === 401) {
-        await signOut();
-      } else {
-        const data = await res.json().catch(() => ({}));
-        setError(data.detail || "Could not log tracker value.");
-      }
-    } catch {
-      setError("Could not log tracker value.");
+      setNumericDrafts((current) => ({ ...current, [card.id]: "" }));
+      fetchCards();
+    } catch (err) {
+      if (err instanceof SignedOutError) return;
+      setError(err instanceof Error ? err.message : "Could not log tracker value.");
     } finally {
       setSavingId(null);
     }
@@ -137,36 +144,31 @@ function TrackerContent() {
   const saveCard = async (card: TrackerCard) => {
     const draft = editDrafts[card.id];
     if (!draft?.name.trim()) return;
-    if (card.value_type === "numeric" && (!draft.target_value || Number(draft.target_value) <= 0)) {
-      setError("Enter a valid weekly target.");
-      return;
+    if (card.value_type === "numeric") {
+      const validationError = validatePositiveNumber(draft.target_value, "weekly target");
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
     }
     setSavingId(card.id);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/tracker_cards/${card.id}`, {
+      const updated = await authedFetch<TrackerCard>(`/tracker_cards/${card.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           card.value_type === "numeric"
             ? { name: draft.name, target_value: Number(draft.target_value), description: draft.description }
             : { name: draft.name, target_days_per_week: draft.target_days_per_week, description: draft.description },
         ),
+        fallbackErrorMessage: "Could not update tracker.",
       });
-      if (res.status === 401) {
-        await signOut();
-        return;
-      }
-      if (res.ok) {
-        const updated = await res.json();
-        setCards((current) => current.map((item) => (item.id === card.id ? { ...item, ...updated, entries: item.entries } : item)));
-        setEditingId(null);
-      } else {
-        const data = await res.json().catch(() => ({}));
-        setError(data.detail || "Could not update tracker.");
-      }
-    } catch {
-      setError("Could not update tracker.");
+      setCards((current) => current.map((item) => (item.id === card.id ? { ...item, ...updated, entries: item.entries } : item)));
+      setEditingId(null);
+    } catch (err) {
+      if (err instanceof SignedOutError) return;
+      setError(err instanceof Error ? err.message : "Could not update tracker.");
     } finally {
       setSavingId(null);
     }
@@ -211,8 +213,7 @@ function TrackerContent() {
             <Text style={styles.emptyState}>Loading trackers...</Text>
           ) : (
             <>
-              {visibleCards.map((card) => {
-                const streak = calculateStreak(card);
+              {cardsWithStreak.map(({ card, streak }) => {
                 const isEditing = editingId === card.id;
                 const draft = editDrafts[card.id] ?? makeEditDraft(card);
                 return (
@@ -307,16 +308,16 @@ function TrackerContent() {
   );
 }
 
-function TrackerGraph({ card }: { card: TrackerCard }) {
-  const days = pastDays(7);
-  const byDate = new Map(card.entries.map((entry) => [entry.date, entry.value]));
+const TrackerGraph = React.memo(function TrackerGraph({ card }: { card: TrackerCard }) {
+  const days = useMemo(() => pastDays(7), []);
+  const byDate = useMemo(() => new Map(card.entries.map((entry) => [entry.date, entry.value])), [card.entries]);
 
   if (card.value_type === "boolean") {
     return (
       <View style={styles.booleanGraph}>
         {days.map((date) => {
           const value = byDate.get(date) ?? 0;
-          const label = new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { weekday: "short" });
+          const label = formatWeekday(date);
           return (
             <View key={date} style={styles.booleanDay}>
               <View style={value > 0 ? styles.booleanDone : styles.booleanMiss}>
@@ -336,12 +337,12 @@ function TrackerGraph({ card }: { card: TrackerCard }) {
     <View style={styles.barGraph}>
       {days.map((date) => {
         const value = byDate.get(date) ?? 0;
-        const label = new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { weekday: "short" });
+        const label = formatWeekday(date);
         return (
           <View key={date} style={styles.barDay}>
             <View style={styles.barSlot}>
               {!!value && <Text style={styles.barValue}>{value}</Text>}
-              <View style={[styles.barFill, { height: `${Math.max(2, (value / roundedMax) * 100)}%` }]} />
+              <View style={[styles.barFill, { height: `${Math.max(2, normalizeToPercent(value, 0, roundedMax))}%` }]} />
             </View>
             <Text style={styles.axisTiny}>{label}</Text>
           </View>
@@ -349,7 +350,7 @@ function TrackerGraph({ card }: { card: TrackerCard }) {
       })}
     </View>
   );
-}
+});
 
 function EditForm({
   draft,

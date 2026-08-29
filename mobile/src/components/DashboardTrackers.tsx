@@ -3,26 +3,18 @@ import { Link } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { useAuth } from "@/auth/AuthContext";
-import { API_BASE_URL } from "@/config/api";
+import { SignedOutError, useApi } from "@/hooks/useApi";
 import { colors, shadow } from "@/styles/theme";
 import type { TrackerCard } from "@/types";
-import { toYMD } from "@/utils/date";
+import { getCached, setCached } from "@/utils/cache";
+import { TRACKER_CARDS_CACHE_KEY } from "@/utils/cacheKeys";
+import { formatWeekday, pastDays } from "@/utils/date";
 import { calculateStreak } from "@/utils/streak";
 
 const DOUBLE_TAP_MS = 300;
 
-function pastDays(count: number) {
-  const today = new Date();
-  return Array.from({ length: count }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() - (count - 1 - index));
-    return toYMD(date);
-  });
-}
-
 export function DashboardTrackers() {
-  const { getAuthHeaders, signOut } = useAuth();
+  const { authedFetch } = useApi();
   const [cards, setCards] = useState<TrackerCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,22 +24,35 @@ export function DashboardTrackers() {
   const fetchCards = useCallback(async () => {
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/tracker_cards`, { headers: { ...getAuthHeaders() } });
-      if (res.status === 401) {
-        await signOut();
-        return;
-      }
-      if (!res.ok) throw new Error("Could not load trackers.");
-      setCards(await res.json());
+      const data = await authedFetch<TrackerCard[]>("/tracker_cards", {
+        fallbackErrorMessage: "Could not load trackers.",
+      });
+      setCards(data);
+      setCached(TRACKER_CARDS_CACHE_KEY, data);
     } catch (err) {
+      if (err instanceof SignedOutError) return;
       setError(err instanceof Error ? err.message : "Could not load trackers.");
     } finally {
       setLoading(false);
     }
-  }, [getAuthHeaders, signOut]);
+  }, [authedFetch]);
 
   useEffect(() => {
-    fetchCards();
+    let active = true;
+    (async () => {
+      // The tracker screen writes to the same cache key, so if it's warm we can skip this
+      // component's own network round trip entirely instead of re-fetching the same data.
+      const cached = await getCached<TrackerCard[]>(TRACKER_CARDS_CACHE_KEY);
+      if (cached && active) {
+        setCards(cached);
+        setLoading(false);
+        return;
+      }
+      if (active) fetchCards();
+    })();
+    return () => {
+      active = false;
+    };
   }, [fetchCards]);
 
   const visibleCards = useMemo(
@@ -61,23 +66,16 @@ export function DashboardTrackers() {
 
   const postEntry = async (cardId: string, value: number, date: string) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/tracker_entries`, {
+      await authedFetch("/tracker_entries", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tracker_id: cardId, value, date }),
+        fallbackErrorMessage: "Could not update tracker entry.",
       });
-      if (res.status === 401) {
-        await signOut();
-        return;
-      }
-      if (res.ok) {
-        fetchCards();
-      } else {
-        const data = await res.json().catch(() => ({}));
-        setError(data.detail || "Could not update tracker entry.");
-      }
-    } catch {
-      setError("Could not update tracker entry.");
+      fetchCards();
+    } catch (err) {
+      if (err instanceof SignedOutError) return;
+      setError(err instanceof Error ? err.message : "Could not update tracker entry.");
     }
   };
 
@@ -134,7 +132,7 @@ export function DashboardTrackers() {
             <View style={styles.row}>
               {days.map((date) => {
                 const value = byDate.get(date) ?? 0;
-                const label = new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { weekday: "short" }).slice(0, 1);
+                const label = formatWeekday(date).slice(0, 1);
                 const cellKey = `${card.id}-${date}`;
                 const isEditing = editor?.cardId === card.id && editor?.date === date;
 
