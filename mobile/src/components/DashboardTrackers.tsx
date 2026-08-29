@@ -9,6 +9,7 @@ import type { TrackerCard } from "@/types";
 import { getCached, setCached } from "@/utils/cache";
 import { TRACKER_CARDS_CACHE_KEY } from "@/utils/cacheKeys";
 import { formatWeekday, pastDays } from "@/utils/date";
+import { getDemoTrackerCards, isDemoTrackerId } from "@/utils/demoTrackers";
 import { calculateStreak } from "@/utils/streak";
 
 const DOUBLE_TAP_MS = 300;
@@ -55,26 +56,47 @@ export function DashboardTrackers() {
     };
   }, [fetchCards]);
 
+  // Demo cards only stand in when the account has no tracker cards at all - if the user has
+  // real ones but toggled them all hidden, respect that and show nothing (same as before).
+  const showingDemoCards = !loading && cards.length === 0;
+  const realVisibleCards = useMemo(() => cards.filter((card) => card.is_visible), [cards]);
   const visibleCards = useMemo(
     () =>
-      cards
-        .filter((card) => card.is_visible)
+      (showingDemoCards ? getDemoTrackerCards() : realVisibleCards)
         .map((card) => ({ card, streak: calculateStreak(card) }))
         .sort((a, b) => b.streak - a.streak),
-    [cards],
+    [realVisibleCards, showingDemoCards],
   );
 
-  const postEntry = async (cardId: string, value: number, date: string) => {
+  // Updates the local card entry immediately so the UI reflects the change without waiting on
+  // a network round trip, then posts it in the background. `apiValue` is what the backend
+  // expects (numeric trackers treat it as a delta against the existing entry); `nextValue` is
+  // the resulting absolute value to show right away. Rolls back to the pre-edit snapshot if the
+  // request fails.
+  const postEntry = async (cardId: string, apiValue: number, date: string, nextValue: number) => {
+    if (isDemoTrackerId(cardId)) return;
+    const snapshot = cards;
+    setCards((current) =>
+      current.map((card) => {
+        if (card.id !== cardId) return card;
+        const index = card.entries.findIndex((entry) => entry.date === date);
+        const entries =
+          index >= 0
+            ? card.entries.map((entry, i) => (i === index ? { ...entry, value: nextValue } : entry))
+            : [...card.entries, { date, value: nextValue }];
+        return { ...card, entries };
+      }),
+    );
     try {
       await authedFetch("/tracker_entries", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tracker_id: cardId, value, date }),
+        body: JSON.stringify({ tracker_id: cardId, value: apiValue, date }),
         fallbackErrorMessage: "Could not update tracker entry.",
       });
-      fetchCards();
     } catch (err) {
       if (err instanceof SignedOutError) return;
+      setCards(snapshot);
       setError(err instanceof Error ? err.message : "Could not update tracker entry.");
     }
   };
@@ -96,7 +118,7 @@ export function DashboardTrackers() {
   const submitEditor = () => {
     if (!editor) return;
     if (editor.draft !== editor.original) {
-      postEntry(editor.cardId, editor.draft - editor.original, editor.date);
+      postEntry(editor.cardId, editor.draft - editor.original, editor.date, editor.draft);
     }
     setEditor(null);
   };
@@ -108,22 +130,27 @@ export function DashboardTrackers() {
     <View style={styles.section}>
       <View style={styles.headerRow}>
         <Text style={styles.sectionTitle}>
-          Active trackers <Text style={styles.sectionHint}>(double tap or hold to edit)</Text>
+          {showingDemoCards ? "Example trackers" : "Active trackers"}{" "}
+          <Text style={styles.sectionHint}>{showingDemoCards ? "(create your own to log real data)" : "(double tap or hold to edit)"}</Text>
         </Text>
         <Link href="/tracker" asChild>
           <Pressable>
-            <Text style={styles.manageLink}>Manage</Text>
+            <Text style={styles.manageLink}>{showingDemoCards ? "New tracker" : "Manage"}</Text>
           </Pressable>
         </Link>
       </View>
       {!!error && <Text style={styles.errorState}>{error}</Text>}
       {visibleCards.map(({ card, streak }) => {
+        const isDemo = isDemoTrackerId(card.id);
         const days = pastDays(7);
         const byDate = new Map(card.entries.map((entry) => [entry.date, entry.value]));
         return (
           <View key={card.id} style={styles.card}>
             <View style={styles.cardTitleRow}>
-              <Text style={styles.cardTitle}>{card.name}</Text>
+              <View style={styles.titleWithPill}>
+                <Text style={styles.cardTitle}>{card.name}</Text>
+                {isDemo && <Text style={styles.demoPill}>Demo</Text>}
+              </View>
               <View style={styles.streak}>
                 <Feather name="zap" size={12} color={colors.orange} />
                 <Text style={styles.streakText}>{streak}</Text>
@@ -137,7 +164,11 @@ export function DashboardTrackers() {
                 const isEditing = editor?.cardId === card.id && editor?.date === date;
 
                 if (card.value_type === "boolean") {
-                  const toggle = () => postEntry(card.id, value > 0 ? 0 : 1, date);
+                  const toggle = () => {
+                    if (isDemo) return;
+                    const next = value > 0 ? 0 : 1;
+                    postEntry(card.id, next, date, next);
+                  };
                   return (
                     <View key={date} style={styles.dayCol}>
                       <Pressable
@@ -155,7 +186,10 @@ export function DashboardTrackers() {
                 }
 
                 const shownValue = isEditing && editor ? editor.draft : value;
-                const openEditor = () => setEditor({ cardId: card.id, date, original: value, draft: value });
+                const openEditor = () => {
+                  if (isDemo) return;
+                  setEditor({ cardId: card.id, date, original: value, draft: value });
+                };
 
                 return (
                   <View key={date} style={styles.dayCol}>
@@ -216,7 +250,19 @@ const styles = StyleSheet.create({
   errorState: { borderRadius: 10, backgroundColor: colors.redSoft, color: colors.red, padding: 10, fontSize: 12, fontWeight: "700" },
   card: { backgroundColor: colors.panel, borderRadius: 14, padding: 12, gap: 8, ...shadow },
   cardTitleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 },
+  titleWithPill: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1 },
   cardTitle: { color: colors.ink, fontSize: 14, fontWeight: "700", flexShrink: 1 },
+  demoPill: {
+    color: colors.orange,
+    backgroundColor: colors.orangeSoft,
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
   streak: {
     flexDirection: "row",
     alignItems: "center",

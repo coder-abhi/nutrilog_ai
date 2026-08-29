@@ -5,6 +5,11 @@ export function toYMD(date: Date) {
   return `${y}-${m}-${d}`;
 }
 
+export function getCurrentMinutes() {
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes();
+}
+
 export function formatDisplayDate(dateStr: string) {
   const [year, month, day] = dateStr.split("-").map(Number);
   return new Date(year, month - 1, day).toLocaleDateString(undefined, {
@@ -49,6 +54,19 @@ export function fromDisplayMinutes(displayMinutes: number) {
   return (displayMinutes + DAY_WINDOW_START_MINUTES) % 1440;
 }
 
+// The tracking day rolls over at 3 AM, not midnight (same boundary as DAY_WINDOW_START_MINUTES
+// above and DAY_START_HOUR on the backend), so a late night logged at 1 AM still counts toward
+// the previous day instead of starting a new (mostly empty) one.
+export function logicalDate(date: Date = new Date()): Date {
+  const result = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  if (date.getHours() < DAY_WINDOW_START_MINUTES / 60) result.setDate(result.getDate() - 1);
+  return result;
+}
+
+export function logicalToYMD(date: Date = new Date()) {
+  return toYMD(logicalDate(date));
+}
+
 // "YYYY-MM-DD" -> short weekday label, e.g. "Mon". Used for the last-7-days tracker graphs.
 export function formatWeekday(dateStr: string) {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, { weekday: "short" });
@@ -70,7 +88,7 @@ export function formatMonthShort(timestamp: number) {
 }
 
 export function pastDays(count: number) {
-  const today = new Date();
+  const today = logicalDate();
   return Array.from({ length: count }, (_, index) => {
     const date = new Date(today);
     date.setDate(today.getDate() - (count - 1 - index));

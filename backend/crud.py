@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import declarative_base, relationship, selectinload, sessionmaker
 
 from models import SignUpInput
+from utils import day_window, logical_date
 
 load_dotenv()
 
@@ -312,11 +313,11 @@ def create_health_log(session, user_id: str, raw_text: str, activities, foods, t
 
 
 def get_daily_logs(session, user_id: str, date=None, days: int = 1):
-    """Fetch logs for an inclusive date range, newest first."""
-    target_date = date or datetime.now().date()
+    """Fetch logs for an inclusive range of tracking days (each 3 AM-3 AM), newest first."""
+    target_date = date or logical_date(datetime.now())
     start_date = target_date - timedelta(days=days - 1)
-    start = datetime(start_date.year, start_date.month, start_date.day)
-    end = datetime(target_date.year, target_date.month, target_date.day, 23, 59, 59, 999999)
+    start, _ = day_window(start_date)
+    _, end = day_window(target_date)
 
     return (
         session.query(HealthLogDB)

@@ -1,11 +1,26 @@
 from datetime import datetime as dt
 
-def calculate_realtime_burn(weight_kg: float, height_cm: float, gender: str, activity_level: str | None = None, age: int | None = None) -> float:
+from utils import DAY_START_HOUR
+
+
+def calculate_realtime_burn(
+    weight_kg: float,
+    height_cm: float,
+    gender: str,
+    activity_level: str | None = None,
+    age: int | None = None,
+    local_minutes: float | None = None,
+) -> float:
     """
-    Calculates calories burned from 12:00 AM till current moment.
+    Calculates calories burned from the day's 3 AM start till the current moment.
     Assumes:
-    - First 6 hours (00:00–06:00) sleeping
+    - First 6 hours (03:00-09:00) sleeping
     - Remaining hours waking
+
+    `local_minutes` (0-1439, minutes since the client's local midnight) should be supplied by
+    the caller whenever known - the server's own clock reflects its host's timezone, not the
+    user's, so falling back to it here can badly misjudge "hours elapsed today" for anyone not
+    in the same timezone as the server.
     """
     if age is None:
         age = 25
@@ -30,11 +45,13 @@ def calculate_realtime_burn(weight_kg: float, height_cm: float, gender: str, act
     sleep_cal_per_hour = (bmr / 24) * 0.95
     wake_cal_per_hour = (bmr / 24) * activity_multiplier
 
-    now = dt.now()
-    hours_since_midnight = now.hour + now.minute / 60
+    if local_minutes is None:
+        now = dt.now()
+        local_minutes = now.hour * 60 + now.minute
+    hours_since_day_start = ((local_minutes - DAY_START_HOUR * 60) % 1440) / 60
 
-    sleep_hours = min(hours_since_midnight, 6)
-    wake_hours = max(0, hours_since_midnight - 6)
+    sleep_hours = min(hours_since_day_start, 6)
+    wake_hours = max(0, hours_since_day_start - 6)
 
     total_burned = (sleep_hours * sleep_cal_per_hour) + (wake_hours * wake_cal_per_hour)
 

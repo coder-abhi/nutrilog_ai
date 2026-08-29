@@ -8,6 +8,7 @@ import AuthGate from "../components/AuthGate";
 import Header from "../components/Header";
 import { useAuth } from "../context/AuthContext";
 import { API_BASE_URL } from "../lib/api";
+import { logicalDate, logicalToYMD, toYMD } from "../lib/date";
 import styles from "./tracker.module.css";
 
 type TrackerEntry = {
@@ -33,15 +34,8 @@ type EditDraft = {
   description: string;
 };
 
-function toYMD(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
 function pastDays(count: number) {
-  const today = new Date();
+  const today = logicalDate();
   return Array.from({ length: count }, (_, index) => {
     const date = new Date(today);
     date.setDate(today.getDate() - (count - 1 - index));
@@ -70,7 +64,7 @@ function calculateStreak(card: TrackerCard) {
   const target = card.value_type === "numeric" ? card.target_value ?? 0 : card.target_days_per_week;
 
   let streak = 0;
-  const today = new Date();
+  const today = logicalDate();
   for (let i = 0; i < 90; i += 1) {
     const date = new Date(today);
     date.setDate(today.getDate() - i);
@@ -289,7 +283,7 @@ function TrackerContent() {
       const res = await fetch(`${API_BASE_URL}/tracker_entries`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ tracker_id: card.id, value, date: toYMD(new Date()) }),
+        body: JSON.stringify({ tracker_id: card.id, value, date: logicalToYMD() }),
       });
       if (res.status === 401) {
         signOut();

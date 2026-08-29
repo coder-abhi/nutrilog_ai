@@ -2,9 +2,16 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import type { User } from "@/types";
-import { apiFetch } from "@/utils/apiClient";
+import { ApiError, apiFetch } from "@/utils/apiClient";
+import { clearAllCached } from "@/utils/cache";
 
 const STORAGE_KEY = "daily_log_auth";
+
+// Render's free tier spins the backend down after idling and can take 30-60s+ to wake back up
+// (see apiClient.ts). Sign-in/sign-up is almost always the very first request of a session, so
+// it's the request most likely to eat the full cold start - give it more room than the default
+// 15s timeout before giving up.
+const AUTH_TIMEOUT_MS = 45000;
 
 type SignUpPayload = User & {
   password: string;
@@ -51,6 +58,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     hydrate();
+
+    // Fire-and-forget: wake up a cold Render dyno as soon as the app opens, so it's hopefully
+    // already warm by the time the user finishes typing their sign-in/sign-up details, instead
+    // of only starting to wake up once they submit the form.
+    apiFetch("/test", { timeoutMs: 60000 }).catch(() => {});
   }, []);
 
   const persistAuth = useCallback(async (nextUser: User, nextToken: string) => {
@@ -67,8 +79,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username, password }),
           fallbackErrorMessage: "Sign in failed",
+          timeoutMs: AUTH_TIMEOUT_MS,
         });
         if (!data.access_token) return { success: false, error: "No token received" };
+        await clearAllCached();
         await persistAuth(data.user, data.access_token);
         return { success: true };
       } catch (err) {
@@ -86,15 +100,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
           fallbackErrorMessage: "Sign up failed",
+          timeoutMs: AUTH_TIMEOUT_MS,
         });
         if (!data.access_token) return { success: false, error: "No token received" };
+        await clearAllCached();
         await persistAuth(data.user, data.access_token);
         return { success: true };
       } catch (err) {
+        // A cold-start timeout only means the client gave up waiting - the server can still
+        // finish the request and create the account. If the user retries after that, they'll
+        // hit "Username already exists" for an account that's actually theirs. Since we still
+        // have the password they just submitted, fall back to signing in with it instead of
+        // showing a confusing "taken" error for a username they just tried to claim.
+        if (err instanceof ApiError && err.status === 400 && /already exists/i.test(err.message)) {
+          const fallback = await signIn(payload.username, payload.password);
+          if (fallback.success) return fallback;
+        }
         return { success: false, error: err instanceof Error ? err.message : "Network error" };
       }
     },
-    [persistAuth],
+    [persistAuth, signIn],
   );
 
   const updateProfile = useCallback(
@@ -123,6 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setToken(null);
     await AsyncStorage.removeItem(STORAGE_KEY);
+    await clearAllCached();
   }, []);
 
   const getAuthHeaders = useCallback(

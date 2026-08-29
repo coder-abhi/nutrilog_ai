@@ -39,6 +39,10 @@ export function AuthForm() {
   const [heightCm, setHeightCm] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // The free-tier backend can take a while to wake up from idle on the first request of a
+  // session; only surface that explanation once the wait has gone on long enough to need it,
+  // rather than showing it immediately on every normal, fast request.
+  const [showWakingHint, setShowWakingHint] = useState(false);
 
   const isSignUp = mode === "signup";
   const visibleGoals = gender === "female" ? goals : goals.filter((goal) => goal.value !== "pcos");
@@ -82,6 +86,7 @@ export function AuthForm() {
       }
     }
     setSubmitting(true);
+    const wakingTimer = setTimeout(() => setShowWakingHint(true), 4000);
     const result = isSignUp
       ? await signUp({
           username: username.trim(),
@@ -94,6 +99,8 @@ export function AuthForm() {
           goals: selectedGoals,
         })
       : await signIn(username.trim(), password);
+    clearTimeout(wakingTimer);
+    setShowWakingHint(false);
     setSubmitting(false);
     if (!result.success) setError(result.error || "Request failed.");
   };
@@ -159,6 +166,7 @@ export function AuthForm() {
           )}
 
           {!!error && <Text style={styles.error}>{error}</Text>}
+          {showWakingHint && <Text style={styles.hint}>Waking up the server, this can take up to a minute the first time…</Text>}
 
           <Pressable style={[styles.primaryButton, submitting && styles.disabled]} onPress={() => submit()} disabled={submitting}>
             <Text style={styles.primaryText}>{submitting ? "..." : isSignUp ? (step === 1 ? "Next" : "Complete Sign up") : "Sign in"}</Text>
@@ -503,6 +511,10 @@ const styles = StyleSheet.create({
   error: {
     color: "#b91c1c",
     fontSize: 14,
+  },
+  hint: {
+    color: colors.muted,
+    fontSize: 13,
   },
   primaryButton: {
     minHeight: 48,

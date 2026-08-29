@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import { API_BASE_URL } from "../lib/api";
+import { logicalToYMD } from "../lib/date";
 import styles from "./CalendarView.module.css";
 import Header from "./Header";
 
@@ -27,17 +28,10 @@ function getDaysInMonth(year: number, month: number): (number | null)[] {
   return grid;
 }
 
-function toYMD(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
 export default function CalendarView() {
   const { signOut, getAuthHeaders } = useAuth();
   const [viewDate, setViewDate] = useState(() => new Date());
-  const [selectedDate, setSelectedDate] = useState<string>(() => toYMD(new Date()));
+  const [selectedDate, setSelectedDate] = useState<string>(() => logicalToYMD());
   const [daySummary, setDaySummary] = useState<DaySummary | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -125,7 +119,7 @@ export default function CalendarView() {
               }
               const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
               const isSelected = dateStr === selectedDate;
-              const isToday = dateStr === toYMD(new Date());
+              const isToday = dateStr === logicalToYMD();
               return (
                 <button
                   key={dateStr}

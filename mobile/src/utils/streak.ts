@@ -1,5 +1,5 @@
 import type { TrackerCard } from "@/types";
-import { toYMD } from "@/utils/date";
+import { logicalDate, toYMD } from "@/utils/date";
 
 export function weekKey(dateStr: string) {
   const date = new Date(`${dateStr}T00:00:00`);
@@ -21,7 +21,7 @@ export function calculateStreak(card: TrackerCard) {
   const target = card.value_type === "numeric" ? card.target_value ?? 0 : card.target_days_per_week;
 
   let streak = 0;
-  const today = new Date();
+  const today = logicalDate();
   for (let i = 0; i < 90; i += 1) {
     const date = new Date(today);
     date.setDate(today.getDate() - i);

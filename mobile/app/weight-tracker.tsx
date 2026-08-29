@@ -10,7 +10,7 @@ import { Segmented } from "@/components/Segmented";
 import { SignedOutError, useApi } from "@/hooks/useApi";
 import { colors, formErrorText, shadow } from "@/styles/theme";
 import { evenXPosition, normalizeToPercent } from "@/utils/chart";
-import { formatEntryDate, formatMonthShort, toYMD } from "@/utils/date";
+import { formatEntryDate, formatMonthShort, logicalToYMD } from "@/utils/date";
 import { validatePositiveNumber } from "@/utils/validation";
 
 type WeightEntry = { value_kg: number; recorded_at: string | null };
@@ -35,7 +35,7 @@ function WeightTrackerContent() {
   const [entries, setEntries] = useState<WeightEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [logWeightValue, setLogWeightValue] = useState("");
-  const [logWeightDate, setLogWeightDate] = useState(() => toYMD(new Date()));
+  const [logWeightDate, setLogWeightDate] = useState(() => logicalToYMD());
   const [viewRange, setViewRange] = useState<RangeKey>("year");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,14 +81,15 @@ function WeightTrackerContent() {
 
   const latest = normalized[normalized.length - 1];
   const currentWeightKg = latest?.value_kg ?? user?.weight_kg ?? 0;
-  const targetWeightKg = user?.target_weight_kg && user.target_weight_kg > 0 ? user.target_weight_kg : Math.max(0, currentWeightKg - 5);
+  const hasTargetWeight = !!user?.target_weight_kg && user.target_weight_kg > 0;
+  const targetWeightKg = hasTargetWeight ? (user!.target_weight_kg as number) : null;
   const values = visible.map((entry) => entry.value_kg);
   const max = values.length ? Math.max(...values) + 5 : currentWeightKg + 5;
   const min = values.length ? Math.max(0, Math.min(...values) - 5) : Math.max(0, currentWeightKg - 5);
   const points = visible
     .map((entry, index) => `${evenXPosition(index, visible.length)},${100 - normalizeToPercent(entry.value_kg, min, max)}`)
     .join(" ");
-  const targetY = 100 - normalizeToPercent(targetWeightKg, min, max);
+  const targetY = targetWeightKg != null ? 100 - normalizeToPercent(targetWeightKg, min, max) : null;
 
   const xTicks = useMemo(() => {
     if (visible.length === 0) return [];
@@ -124,7 +125,7 @@ function WeightTrackerContent() {
         fallbackErrorMessage: "Failed to log weight.",
       });
       setLogWeightValue("");
-      setLogWeightDate(toYMD(new Date()));
+      setLogWeightDate(logicalToYMD());
       fetchWeights();
     } catch (err) {
       if (err instanceof SignedOutError) return;
@@ -144,7 +145,7 @@ function WeightTrackerContent() {
         </View>
         <View style={styles.summaryRow}>
           <Summary label="Current Weight" value={loading ? "..." : `${currentWeightKg.toFixed(1)} kg`} />
-          <Summary label="Target Weight" value={`${targetWeightKg.toFixed(1)} kg`} />
+          <Summary label="Target Weight" value={targetWeightKg != null ? `${targetWeightKg.toFixed(1)} kg` : "Not set"} />
         </View>
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Log weight</Text>
@@ -174,7 +175,7 @@ function WeightTrackerContent() {
               <View style={styles.plotWrap}>
                 <View style={styles.plot}>
                   <Svg viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="none">
-                    {targetY >= 0 && targetY <= 100 && <Line x1="0" x2="100" y1={targetY} y2={targetY} stroke="#22c55e" strokeWidth="0.6" strokeDasharray="2 2" />}
+                    {targetY != null && targetY >= 0 && targetY <= 100 && <Line x1="0" x2="100" y1={targetY} y2={targetY} stroke="#22c55e" strokeWidth="0.6" strokeDasharray="2 2" />}
                     <Polyline points={points} fill="none" stroke={colors.blue} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                     {visible.map((entry, index) => (
                       <Circle

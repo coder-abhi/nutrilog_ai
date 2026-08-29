@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import { API_BASE_URL } from "../lib/api";
+import { logicalToYMD } from "../lib/date";
 import styles from "./WeightTracker.module.css";
 import Header from "./Header";
 
@@ -21,10 +22,7 @@ export default function WeightTracker() {
   const [entries, setEntries] = useState<WeightEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [logWeightValue, setLogWeightValue] = useState("");
-  const [logWeightDate, setLogWeightDate] = useState(() => {
-    const d = new Date();
-    return d.toISOString().slice(0, 10);
-  });
+  const [logWeightDate, setLogWeightDate] = useState(() => logicalToYMD());
   const [viewRange, setViewRange] = useState<RangeKey>("month");
   const [logWeightSubmitting, setLogWeightSubmitting] = useState(false);
   const [logWeightError, setLogWeightError] = useState<string | null>(null);
@@ -79,10 +77,7 @@ export default function WeightTracker() {
 
   const latestEntry = normalizedEntries[normalizedEntries.length - 1];
   const currentWeightKg = latestEntry?.value_kg ?? user?.weight_kg ?? 0;
-  const targetWeightKg =
-    user?.target_weight_kg != null && user.target_weight_kg > 0
-      ? user.target_weight_kg
-      : Math.max(0, currentWeightKg - 5);
+  const targetWeightKg = user?.target_weight_kg != null && user.target_weight_kg > 0 ? user.target_weight_kg : null;
 
   const visibleValues = visibleEntries.map((e) => e.value_kg);
   const highestVisibleWeight = Math.max(...visibleValues);
@@ -98,7 +93,7 @@ export default function WeightTracker() {
     })
     .join(" ");
 
-  const targetY = ((max - targetWeightKg) / (max - min || 1)) * 100;
+  const targetY = targetWeightKg != null ? ((max - targetWeightKg) / (max - min || 1)) * 100 : null;
   const yAxisLabels = [max, (max + min) / 2, min];
   const firstVisibleDate = visibleEntries[0]?.recorded_at ?? null;
   const lastVisibleDate = visibleEntries[visibleEntries.length - 1]?.recorded_at ?? null;
@@ -137,7 +132,7 @@ export default function WeightTracker() {
         return;
       }
       setLogWeightValue("");
-      setLogWeightDate(new Date().toISOString().slice(0, 10));
+      setLogWeightDate(logicalToYMD());
       fetchWeights();
     } catch {
       setLogWeightError("Network error.");
@@ -168,7 +163,7 @@ export default function WeightTracker() {
           </div>
           <div className={styles.summaryCard}>
             <h2 className={styles.summaryLabel}>Target Weight</h2>
-            <div className={styles.summaryValue}>{targetWeightKg.toFixed(1)} kg</div>
+            <div className={styles.summaryValue}>{targetWeightKg != null ? `${targetWeightKg.toFixed(1)} kg` : "Not set"}</div>
           </div>
         </section>
 
@@ -239,7 +234,7 @@ export default function WeightTracker() {
                     preserveAspectRatio="none"
                     className={styles.chartSvg}
                   >
-                    {targetY >= 0 && targetY <= 100 && (
+                    {targetY != null && targetY >= 0 && targetY <= 100 && (
                       <line
                         x1="0"
                         x2="100"

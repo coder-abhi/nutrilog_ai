@@ -20,3 +20,18 @@ export async function setCached<T>(key: string, value: T): Promise<void> {
     // Cache writes are best-effort; a failure here shouldn't affect the live data flow.
   }
 }
+
+// Cache keys aren't namespaced by user, so switching accounts (sign out, sign in as someone
+// else, sign up a new account) must wipe every cached response. Otherwise the next screen
+// paints instantly with the *previous* account's trackers/summary/insulin data before the
+// real fetch overwrites it - and any action taken against those stale ids (e.g. logging a
+// tracker value) 404s because they belong to a different user.
+export async function clearAllCached(): Promise<void> {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const cacheKeys = keys.filter((key) => key.startsWith(CACHE_PREFIX));
+    if (cacheKeys.length) await AsyncStorage.multiRemove(cacheKeys);
+  } catch {
+    // Best-effort; a failure here shouldn't block sign-out/sign-in.
+  }
+}

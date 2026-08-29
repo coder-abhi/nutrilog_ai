@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { API_BASE_URL } from "../lib/api";
+import { logicalToYMD, toYMD } from "../lib/date";
 import styles from "./BottomInput.module.css";
 
 export type SummaryData = {
@@ -45,10 +46,16 @@ export default function BottomInput({ onCaloriesCalculated, logDate }: Props) {
     setIsLoading(true);
     setErrorMessage(null);
     try {
+      // If the dashboard is on its auto-detected "today" (the logical, 3-AM-shifted day),
+      // send the true calendar date paired with the true clock time so the backend can
+      // reconstruct a real, monotonic timestamp - otherwise a log made between midnight and
+      // 3 AM would get stamped with a date one day behind reality. An explicit backdate
+      // (the user picked a different date) is honored as-is.
+      const eventDate = logDate === logicalToYMD() ? toYMD(new Date()) : logDate;
       const response = await fetch(`${API_BASE_URL}/log_input`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ sentence: userText, date: logDate, log_time_minutes: logTimeMinutes }),
+        body: JSON.stringify({ sentence: userText, date: eventDate, log_time_minutes: logTimeMinutes }),
       });
       const data = await response.json();
       if (response.status === 401) {

@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import Svg, { Path } from "react-native-svg";
+import Svg, { Line, Path } from "react-native-svg";
 
 import { useAuth } from "@/auth/AuthContext";
 import { AuthGate } from "@/components/AuthGate";
@@ -17,7 +17,7 @@ import { ApiError } from "@/utils/apiClient";
 import { getCached, setCached } from "@/utils/cache";
 import { normalizeToPercent } from "@/utils/chart";
 import { INSULIN_CURVES_CACHE_KEY, PASSIVE_CALORIE_CACHE_KEY, dashboardSummaryCacheKey } from "@/utils/cacheKeys";
-import { formatDisplayDate, toYMD } from "@/utils/date";
+import { formatDisplayDate, getCurrentMinutes, logicalToYMD, toYMD } from "@/utils/date";
 
 type DashboardRange = "today" | "week" | "month";
 type InsulinCurve = { timestamp: string | null; points: { minute: number; value: number }[] };
@@ -44,7 +44,7 @@ function DashboardContent() {
   const { authedFetch } = useApi();
   const [summaryData, setSummaryData] = useState<SummaryData>(emptySummary);
   const [insulinCurves, setInsulinCurves] = useState<InsulinCurve[]>([]);
-  const [selectedDate] = useState(() => toYMD(new Date()));
+  const [selectedDate] = useState(() => logicalToYMD());
   const [dashboardRange, setDashboardRange] = useState<DashboardRange>("today");
   const [passiveCalorie, setPassiveCalorie] = useState(0);
 
@@ -76,7 +76,7 @@ function DashboardContent() {
   const fetchPassiveCalorie = useCallback(async () => {
     if (!user?.username) return;
     try {
-      const value = await authedFetch<number>("/passive_calorie_burned");
+      const value = await authedFetch<number>(`/passive_calorie_burned?local_minutes=${getCurrentMinutes()}`);
       setPassiveCalorie(value ?? 0);
       setCached(PASSIVE_CALORIE_CACHE_KEY, value ?? 0);
     } catch (err) {
@@ -85,15 +85,16 @@ function DashboardContent() {
     }
   }, [authedFetch, user?.username]);
 
-  // The insulin graph always shows a rolling last-24-hours window, independent of the
-  // today/week/month range picker above. Fetching 2 calendar days (today + yesterday)
-  // guarantees full 24h coverage even right after midnight, when "today" alone would miss
+  // The insulin graph always shows a rolling last-24-hours window (plus a short lookahead for
+  // the predicted curve of a just-logged meal), independent of the today/week/month range
+  // picker above. Fetching 3 calendar days guarantees full coverage no matter what time it is
+  // now, including right after the 3 AM tracking-day boundary, when "today" alone would miss
   // most of the window.
   const fetchInsulinCurves = useCallback(async () => {
     if (!user?.username) return;
     try {
       const result = await authedFetch<{ insulin_curves: InsulinCurve[] }>(
-        `/today_summary?date=${toYMD(new Date())}&days=2`,
+        `/today_summary?date=${toYMD(new Date())}&days=3`,
         { fallbackErrorMessage: "Could not load insulin data." },
       );
       const curves = result?.insulin_curves ?? [];
@@ -143,14 +144,23 @@ function DashboardContent() {
     };
   }, [fetchInsulinCurves]);
 
+  // How far past "now" the chart draws a just-logged meal's predicted rise/peak/fall (an
+  // insulin curve is a simulated ~4-hour response, not a sensor reading, so almost all of a
+  // fresh meal's curve is still "in the future" the instant it's logged - clipping the chart at
+  // "now" would make it look like nothing happened).
+  const FUTURE_LOOKAHEAD_MINUTES = 240;
+
   const insulinChart = useMemo(() => {
-    // Rolling last-24-hours window ending now, expressed as minutes-since-window-start (0-1440)
-    // so every point (which may fall on either of the two fetched calendar days) lands on one axis.
-    const windowEnd = Date.now();
-    const windowStart = windowEnd - 24 * 60 * 60 * 1000;
-    const WINDOW_MINUTES = 24 * 60;
+    // Rolling last-24-hours window plus a short lookahead, expressed as minutes-since-window-start
+    // so every point (which may fall on any of the fetched calendar days) lands on one axis.
+    // "Now" therefore isn't the right edge of the chart - it's marked explicitly instead.
+    const nowMs = Date.now();
+    const windowStart = nowMs - 24 * 60 * 60 * 1000;
+    const windowEnd = nowMs + FUTURE_LOOKAHEAD_MINUTES * 60 * 1000;
+    const NOW_MINUTE = 24 * 60;
+    const WINDOW_MINUTES = NOW_MINUTE + FUTURE_LOOKAHEAD_MINUTES;
     const contributions = new Map<number, number>();
-    const keyMinutes = new Set<number>([0, 360, 720, 1080, WINDOW_MINUTES]);
+    const keyMinutes = new Set<number>([0, 360, 720, 1080, NOW_MINUTE, WINDOW_MINUTES]);
     insulinCurves.forEach((curve) => {
       if (!curve.timestamp) return;
       const logTime = new Date(curve.timestamp).getTime();
@@ -173,21 +183,38 @@ function DashboardContent() {
       y: 100 - normalizeToPercent(point.value, 0, maxValue),
       normal: point.value <= NORMAL_MAX,
     }));
-    const segments: { d: string; normal: boolean }[] = [];
+    const segments: { d: string; normal: boolean; future: boolean }[] = [];
     let normalMinutes = 0;
+    let elapsedMinutes = 0;
     for (let i = 0; i < points.length - 1; i += 1) {
       const a = points[i];
       const b = points[i + 1];
       const normal = a.normal && b.normal;
-      segments.push({ d: `M ${a.x} ${a.y} L ${b.x} ${b.y}`, normal });
-      if (normal) normalMinutes += series[i + 1].minute - series[i].minute;
+      const future = series[i].minute >= NOW_MINUTE;
+      segments.push({ d: `M ${a.x} ${a.y} L ${b.x} ${b.y}`, normal, future });
+      // Only the elapsed portion (up to "now") counts toward the normal% summary - the
+      // lookahead is a prediction, not something that has actually happened yet.
+      if (!future) {
+        const segmentMinutes = Math.min(series[i + 1].minute, NOW_MINUTE) - series[i].minute;
+        elapsedMinutes += segmentMinutes;
+        if (normal) normalMinutes += segmentMinutes;
+      }
     }
-    const totalMinutes = series.length > 1 ? series[series.length - 1].minute - series[0].minute : 0;
+    const xTicks = [
+      { minute: 0, label: "-24h" },
+      { minute: 360, label: "-18h" },
+      { minute: 720, label: "-12h" },
+      { minute: 1080, label: "-6h" },
+      { minute: NOW_MINUTE, label: "Now" },
+      { minute: WINDOW_MINUTES, label: `+${Math.round(FUTURE_LOOKAHEAD_MINUTES / 60)}h` },
+    ].map((tick) => ({ ...tick, pct: normalizeToPercent(tick.minute, 0, WINDOW_MINUTES) }));
     return {
       segments,
       maxValue,
+      nowX: normalizeToPercent(NOW_MINUTE, 0, WINDOW_MINUTES),
+      xTicks,
       peak: Math.max(...series.map((point) => point.value)),
-      normalPercent: totalMinutes > 0 ? Math.round((normalMinutes / totalMinutes) * 100) : 100,
+      normalPercent: elapsedMinutes > 0 ? Math.round((normalMinutes / elapsedMinutes) * 100) : 100,
       hasData: insulinCurves.some((curve) => curve.points.length > 0),
     };
   }, [insulinCurves]);
@@ -267,23 +294,35 @@ function DashboardContent() {
                     fill="none"
                     stroke={segment.normal ? "#16a34a" : colors.blue}
                     strokeWidth={1}
+                    strokeDasharray={segment.future ? "3 2" : undefined}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     vectorEffect="non-scaling-stroke"
                   />
                 ))}
+                <Line
+                  x1={insulinChart.nowX}
+                  x2={insulinChart.nowX}
+                  y1={0}
+                  y2={100}
+                  stroke={colors.quiet}
+                  strokeWidth={1}
+                  strokeDasharray="2 2"
+                  vectorEffect="non-scaling-stroke"
+                />
               </Svg>
             </View>
           </View>
           <View style={styles.xAxis}>
-            {["-24h", "-18h", "-12h", "-6h", "Now"].map((label) => (
-              <Text key={label} style={styles.axisText}>
-                {label}
+            {insulinChart.xTicks.map((tick) => (
+              <Text key={tick.label} style={[styles.axisText, styles.xAxisLabel, { left: `${tick.pct}%` }]}>
+                {tick.label}
               </Text>
             ))}
           </View>
           <Text style={styles.chartLegend}>
-            <Text style={{ color: "#16a34a" }}>Green</Text> normal · <Text style={{ color: colors.blue }}>Blue</Text> raised — watch how long a meal keeps it up
+            <Text style={{ color: "#16a34a" }}>Green</Text> normal · <Text style={{ color: colors.blue }}>Blue</Text> raised ·{" "}
+            <Text style={{ color: colors.quiet }}>dashed</Text> predicted — watch how long a meal keeps it up
           </Text>
           {!insulinChart.hasData && (
             <Text style={styles.chartEmptyHint}>Log a meal to see how it moves your insulin over the last 24 hours.</Text>
@@ -293,7 +332,6 @@ function DashboardContent() {
         <DashboardTrackers />
       </ScrollView>
       <BottomLogInput
-        logDate={selectedDate}
         onLogged={() => {
           fetchDashboardSummary();
           fetchInsulinCurves();
@@ -466,8 +504,13 @@ const styles = StyleSheet.create({
   },
   xAxis: {
     marginLeft: 24,
-    flexDirection: "row",
-    justifyContent: "space-between",
+    height: 14,
+    position: "relative",
+  },
+  xAxisLabel: {
+    position: "absolute",
+    top: 0,
+    transform: [{ translateX: -14 }],
   },
   axisText: {
     color: colors.quiet,

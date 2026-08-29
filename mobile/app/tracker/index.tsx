@@ -12,7 +12,8 @@ import type { TrackerCard } from "@/types";
 import { TRACKER_CARDS_CACHE_KEY } from "@/utils/cacheKeys";
 import { getCached, setCached } from "@/utils/cache";
 import { normalizeToPercent } from "@/utils/chart";
-import { formatWeekday, pastDays, toYMD } from "@/utils/date";
+import { formatWeekday, logicalToYMD, pastDays } from "@/utils/date";
+import { getDemoTrackerCards, isDemoTrackerId } from "@/utils/demoTrackers";
 import { calculateStreak } from "@/utils/streak";
 import { validatePositiveNumber } from "@/utils/validation";
 
@@ -87,12 +88,19 @@ function TrackerContent() {
 
   const visibleCards = useMemo(() => cards.filter((card) => card.is_visible), [cards]);
 
+  // A brand-new account has no trackers of its own yet - show read-only example cards instead
+  // of a blank grid, so the feature is discoverable. They disappear as soon as a real one
+  // exists (based on total cards, not just visible ones - if the user hid every real card,
+  // respect that instead of masking it with demo content).
+  const showingDemoCards = !loading && cards.length === 0;
+  const displayCards = showingDemoCards ? getDemoTrackerCards() : visibleCards;
+
   // Compute streaks once per card list change, not on every render. Otherwise typing into
   // one tracker's numeric input (which lives in sibling state, numericDrafts) would re-run
   // calculateStreak's up-to-90-day loop for every visible card on every keystroke.
   const cardsWithStreak = useMemo(
-    () => visibleCards.map((card) => ({ card, streak: calculateStreak(card) })),
-    [visibleCards],
+    () => displayCards.map((card) => ({ card, streak: calculateStreak(card) })),
+    [displayCards],
   );
 
   const setVisibility = async (card: TrackerCard, isVisible: boolean) => {
@@ -113,23 +121,41 @@ function TrackerContent() {
   };
 
   const logValue = async (card: TrackerCard, value: number) => {
+    if (isDemoTrackerId(card.id)) return;
     if (!Number.isFinite(value) || value < 0) {
       setError("Enter a valid non-negative value.");
       return;
     }
     setSavingId(card.id);
     setError(null);
+    const date = logicalToYMD();
+    // Boolean trackers set the day's value directly; numeric trackers add to whatever's
+    // already logged for the day (matching the backend's add_to_existing semantics).
+    const nextValue =
+      card.value_type === "numeric" ? Math.max(0, (card.entries.find((entry) => entry.date === date)?.value ?? 0) + value) : value;
+    const snapshot = cards;
+    setCards((current) =>
+      current.map((item) => {
+        if (item.id !== card.id) return item;
+        const index = item.entries.findIndex((entry) => entry.date === date);
+        const entries =
+          index >= 0
+            ? item.entries.map((entry, i) => (i === index ? { ...entry, value: nextValue } : entry))
+            : [...item.entries, { date, value: nextValue }];
+        return { ...item, entries };
+      }),
+    );
+    setNumericDrafts((current) => ({ ...current, [card.id]: "" }));
     try {
       await authedFetch("/tracker_entries", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tracker_id: card.id, value, date: toYMD(new Date()) }),
+        body: JSON.stringify({ tracker_id: card.id, value, date }),
         fallbackErrorMessage: "Could not log tracker value.",
       });
-      setNumericDrafts((current) => ({ ...current, [card.id]: "" }));
-      fetchCards();
     } catch (err) {
       if (err instanceof SignedOutError) return;
+      setCards(snapshot);
       setError(err instanceof Error ? err.message : "Could not log tracker value.");
     } finally {
       setSavingId(null);
@@ -137,11 +163,13 @@ function TrackerContent() {
   };
 
   const startEditing = (card: TrackerCard) => {
+    if (isDemoTrackerId(card.id)) return;
     setEditingId(card.id);
     setEditDrafts((current) => ({ ...current, [card.id]: current[card.id] ?? makeEditDraft(card) }));
   };
 
   const saveCard = async (card: TrackerCard) => {
+    if (isDemoTrackerId(card.id)) return;
     const draft = editDrafts[card.id];
     if (!draft?.name.trim()) return;
     if (card.value_type === "numeric") {
@@ -193,7 +221,7 @@ function TrackerContent() {
 
         <View style={styles.selector}>
           {cards.length === 0 ? (
-            <Text style={styles.selectorEmpty}>No tracker cards yet.</Text>
+            <Text style={styles.selectorEmpty}>No tracker cards yet — see the examples below.</Text>
           ) : (
             cards.map((card) => (
               <Pressable key={card.id} style={styles.selectorItem} onPress={() => setVisibility(card, !card.is_visible)}>
@@ -208,30 +236,42 @@ function TrackerContent() {
 
         {!!error && <Text style={styles.errorState} accessibilityRole="alert">{error}</Text>}
 
+        {showingDemoCards && (
+          <Text style={styles.demoBanner}>
+            These are example trackers so you can see how the feature works — create your own below to start logging real data.
+          </Text>
+        )}
+
         <View style={styles.grid}>
           {loading ? (
             <Text style={styles.emptyState}>Loading trackers...</Text>
           ) : (
             <>
               {cardsWithStreak.map(({ card, streak }) => {
+                const isDemo = isDemoTrackerId(card.id);
                 const isEditing = editingId === card.id;
                 const draft = editDrafts[card.id] ?? makeEditDraft(card);
                 return (
                   <View key={card.id} style={styles.card}>
                     <View style={styles.cardTop}>
                       <View style={styles.cardTitleWrap}>
-                        <Text style={styles.typePill}>{card.value_type === "boolean" ? "Binary" : "Numerical"}</Text>
+                        <View style={styles.pillRow}>
+                          <Text style={styles.typePill}>{card.value_type === "boolean" ? "Binary" : "Numerical"}</Text>
+                          {isDemo && <Text style={styles.demoPill}>Demo</Text>}
+                        </View>
                         <Text style={styles.cardTitle}>{card.name}</Text>
                       </View>
                       <View style={styles.cardTools}>
-                        <Pressable
-                          style={styles.iconButton}
-                          onPress={() => startEditing(card)}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Edit ${card.name}`}
-                        >
-                          <Feather name="edit-2" size={17} color={colors.ink} />
-                        </Pressable>
+                        {!isDemo && (
+                          <Pressable
+                            style={styles.iconButton}
+                            onPress={() => startEditing(card)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Edit ${card.name}`}
+                          >
+                            <Feather name="edit-2" size={17} color={colors.ink} />
+                          </Pressable>
+                        )}
                         <View style={styles.streak}>
                           <Feather name="zap" size={17} color={colors.orange} />
                           <Text style={styles.streakText}>{streak}</Text>
@@ -254,7 +294,9 @@ function TrackerContent() {
                           {card.value_type === "numeric" ? `${card.target_value} per week target` : `${card.target_days_per_week} days per week target`}
                         </Text>
                         <TrackerGraph card={card} />
-                        {card.value_type === "boolean" ? (
+                        {isDemo ? (
+                          <Text style={styles.demoHint}>Example data — not editable.</Text>
+                        ) : card.value_type === "boolean" ? (
                           <View style={styles.actions}>
                             <Pressable
                               style={styles.actionButton}
@@ -433,7 +475,32 @@ const styles = StyleSheet.create({
   addCard: { minHeight: 120, backgroundColor: colors.panel, borderWidth: 1, borderStyle: "dashed", borderColor: colors.line, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   cardTop: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
   cardTitleWrap: { flex: 1 },
+  pillRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   typePill: { color: colors.blue, fontSize: 11, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase" },
+  demoPill: {
+    color: colors.orange,
+    backgroundColor: colors.orangeSoft,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  demoBanner: {
+    color: colors.muted,
+    fontSize: 13,
+    backgroundColor: colors.orangeSoft,
+    borderRadius: 12,
+    padding: 12,
+  },
+  demoHint: {
+    color: colors.quiet,
+    fontSize: 12,
+    fontStyle: "italic",
+    marginTop: "auto",
+  },
   cardTitle: { marginTop: 6, color: colors.ink, fontSize: 19, fontWeight: "700" },
   cardTools: { flexDirection: "row", alignItems: "center", gap: 7 },
   iconButton: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, borderColor: colors.line, alignItems: "center", justifyContent: "center" },

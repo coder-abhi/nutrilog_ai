@@ -7,6 +7,7 @@ import styles from "./page.module.css";
 import { useAuth } from "./context/AuthContext";
 import Header from "./components/Header";
 import { API_BASE_URL } from "./lib/api";
+import { fromDisplayMinutes, getCurrentMinutes, logicalToYMD, toDisplayMinutes } from "./lib/date";
 
 type FoodEntry = {
   name: string;
@@ -56,13 +57,6 @@ const EMPTY_SUMMARY: SummaryData = {
   sugar: 0,
 };
 
-function toYMD(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
 function formatDisplayDate(dateStr: string) {
   const [year, month, day] = dateStr.split("-").map(Number);
   return new Date(year, month - 1, day).toLocaleDateString(undefined, {
@@ -105,7 +99,7 @@ function DashboardContent() {
   const [insulinCurves, setInsulinCurves] = useState<InsulinCurve[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState(() => toYMD(new Date()));
+  const [selectedDate, setSelectedDate] = useState(() => logicalToYMD());
   const [dashboardRange, setDashboardRange] = useState<DashboardRange>("today");
   const [passiveCalorie, setPassiveCalorie] = useState(0)
   const selectedRangeDays = dashboardRange === "today" ? 1 : dashboardRange === "week" ? 7 : 30;
@@ -157,7 +151,7 @@ function DashboardContent() {
   const fetchPassiveCalorie = useCallback(async () => {
     if (!user?.username) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/passive_calorie_burned`, {
+      const res = await fetch(`${API_BASE_URL}/passive_calorie_burned?local_minutes=${getCurrentMinutes()}`, {
         headers: { ...getAuthHeaders() },
       });
       if (res.status === 401) {
@@ -206,7 +200,9 @@ function DashboardContent() {
     insulinCurves.forEach((curve) => {
       if (!curve.timestamp) return;
       const logDate = new Date(curve.timestamp);
-      const baseMinute = logDate.getHours() * 60 + logDate.getMinutes();
+      // Reframed so the chart's 0-1439 axis runs 3 AM to 3 AM (the tracking-day boundary)
+      // instead of midnight to midnight, matching what "date" in the query actually spans.
+      const baseMinute = toDisplayMinutes(logDate.getHours() * 60 + logDate.getMinutes());
       const curveEndMinute = Math.max(...curve.points.map((point) => point.minute), 0);
 
       if (baseMinute > 0 && baseMinute <= 1439) keyMinutes.add(baseMinute - 1);
@@ -374,7 +370,7 @@ function DashboardContent() {
               </div>
               <div className={styles.insulinXAxis}>
                 {[0, 360, 720, 1080, 1439].map((minute) => (
-                  <span key={minute}>{formatHour(minute)}</span>
+                  <span key={minute}>{formatHour(fromDisplayMinutes(minute))}</span>
                 ))}
               </div>
             </div>

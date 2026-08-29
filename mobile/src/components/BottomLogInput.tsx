@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SignedOutError, useApi } from "@/hooks/useApi";
 import { colors } from "@/styles/theme";
-import { formatSliderTime, fromDisplayMinutes, toDisplayMinutes } from "@/utils/date";
+import { formatSliderTime, fromDisplayMinutes, toDisplayMinutes, toYMD } from "@/utils/date";
 
 export type LogResult = {
   calories_intake?: number;
@@ -31,7 +31,7 @@ function getCurrentMinutes() {
   return now.getHours() * 60 + now.getMinutes();
 }
 
-export function BottomLogInput({ logDate, onLogged }: { logDate: string; onLogged: (data: LogResult) => void }) {
+export function BottomLogInput({ onLogged }: { onLogged: (data: LogResult) => void }) {
   const { authedFetch } = useApi();
   const insets = useSafeAreaInsets();
   const [input, setInput] = useState("");
@@ -65,10 +65,14 @@ export function BottomLogInput({ logDate, onLogged }: { logDate: string; onLogge
     setIsLoading(true);
     setErrorMessage(null);
     try {
+      // Always the true calendar date paired with the true clock time (not the dashboard's
+      // logical/3-AM-shifted "today"), so the backend can reconstruct a real, monotonic
+      // timestamp. The 3 AM tracking-day boundary is applied when the entry is later queried,
+      // not when it's created.
       const data = await authedFetch<LogResult>("/log_input", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sentence: userText, date: logDate, log_time_minutes: logTimeMinutes }),
+        body: JSON.stringify({ sentence: userText, date: toYMD(new Date()), log_time_minutes: logTimeMinutes }),
         fallbackErrorMessage: "Request failed",
       });
       onLogged(data);

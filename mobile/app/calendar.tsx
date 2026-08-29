@@ -7,7 +7,7 @@ import { GradientScreen } from "@/components/Screen";
 import { SignedOutError, useApi } from "@/hooks/useApi";
 import { colors, shadow } from "@/styles/theme";
 import type { ActivityEntry, FoodEntry, SummaryData } from "@/types";
-import { formatLongDate, formatMonthYear, toYMD } from "@/utils/date";
+import { formatLongDate, formatMonthYear, logicalToYMD } from "@/utils/date";
 
 const daysHeader = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -38,7 +38,7 @@ export default function CalendarPage() {
 function CalendarContent() {
   const { authedFetch } = useApi();
   const [viewDate, setViewDate] = useState(() => new Date());
-  const [selectedDate, setSelectedDate] = useState(() => toYMD(new Date()));
+  const [selectedDate, setSelectedDate] = useState(() => logicalToYMD());
   const [daySummary, setDaySummary] = useState<DaySummary | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -97,7 +97,7 @@ function CalendarContent() {
               if (day === null) return <View key={`empty-${index}`} style={styles.dayCellEmpty} />;
               const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
               const selected = dateStr === selectedDate;
-              const today = dateStr === toYMD(new Date());
+              const today = dateStr === logicalToYMD();
               return (
                 <Pressable
                   key={dateStr}

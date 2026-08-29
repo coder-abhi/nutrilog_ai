@@ -45,7 +45,7 @@ from models import (
     TrackerVisibilityInput,
     WeightEntryInput,
 )
-from utils import aggregate_summary, parse_date_param
+from utils import aggregate_summary, logical_date, parse_date_param
 
 load_dotenv()
 
@@ -207,16 +207,22 @@ def edit_profile(data: ProfileUpdateInput, db: Session = Depends(get_db), curren
         raise HTTPException(status_code=404, detail="User not found.")
     return {"success": True, "user": _user_payload(user)}
 @app.get("/passive_calorie_burned")
-def passive_calorie_burned(current_user=Depends(get_current_user)):
+def passive_calorie_burned(
+    local_minutes: float | None = Query(default=None, ge=0, lt=1440),
+    current_user=Depends(get_current_user),
+):
     """
-    Returns passive calories burned from 12:00 AM till now.
+    Returns passive calories burned since the day's 3 AM start till now.
+    `local_minutes` (minutes since the caller's local midnight) should be supplied by the
+    client so this reflects the user's own clock rather than the server's.
     """
     total_burned = calculate_realtime_burn(
         weight_kg=current_user.weight_kg,
         height_cm=current_user.height_cm,
         gender=current_user.gender,
         activity_level=current_user.activity_level,
-        age=25
+        age=25,
+        local_minutes=local_minutes,
     )
 
     return int(total_burned)
@@ -645,7 +651,7 @@ Rules:
         insulin_curve=json.dumps([point.model_dump() for point in parsed.insulin_curve])
     )
 
-    tracker_date = (log_timestamp or datetime.now()).date()
+    tracker_date = logical_date(log_timestamp or datetime.now())
     tracker_updates = _extract_tracker_updates(sentence, db, current_user.username, tracker_date)
     summary["tracker_updates"] = tracker_updates
 
