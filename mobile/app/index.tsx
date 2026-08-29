@@ -1,3 +1,4 @@
+import { Feather } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
@@ -16,7 +17,7 @@ import { ApiError } from "@/utils/apiClient";
 import { getCached, setCached } from "@/utils/cache";
 import { normalizeToPercent } from "@/utils/chart";
 import { PASSIVE_CALORIE_CACHE_KEY, dashboardSummaryCacheKey } from "@/utils/cacheKeys";
-import { formatDisplayDate, formatHour, toYMD } from "@/utils/date";
+import { formatDisplayDate, formatHour, fromDisplayMinutes, toDisplayMinutes, toYMD } from "@/utils/date";
 
 type DashboardRange = "today" | "week" | "month";
 type InsulinCurve = { timestamp: string | null; points: { minute: number; value: number }[] };
@@ -119,6 +120,8 @@ function DashboardContent() {
   }, [fetchPassiveCalorie]);
 
   const insulinChart = useMemo(() => {
+    // The chart's x-axis runs from 3 AM to the next 3 AM rather than midnight to midnight,
+    // so every minute is rebased into that display window before being plotted.
     const contributions = new Map<number, number>();
     const keyMinutes = new Set<number>([0, 360, 720, 1080, 1439]);
     insulinCurves.forEach((curve) => {
@@ -126,10 +129,10 @@ function DashboardContent() {
       const logDate = new Date(curve.timestamp);
       const baseMinute = logDate.getHours() * 60 + logDate.getMinutes();
       curve.points.forEach((point) => {
-        const absoluteMinute = baseMinute + point.minute;
-        if (absoluteMinute < 0 || absoluteMinute > 1439) return;
-        keyMinutes.add(absoluteMinute);
-        contributions.set(absoluteMinute, (contributions.get(absoluteMinute) ?? 0) + Math.max(0, point.value - 8));
+        const absoluteMinute = (((baseMinute + point.minute) % 1440) + 1440) % 1440;
+        const displayMinute = toDisplayMinutes(absoluteMinute);
+        keyMinutes.add(displayMinute);
+        contributions.set(displayMinute, (contributions.get(displayMinute) ?? 0) + Math.max(0, point.value - 8));
       });
     });
     const series = Array.from(keyMinutes)
@@ -144,15 +147,20 @@ function DashboardContent() {
       normal: point.value <= NORMAL_MAX,
     }));
     const segments: { d: string; normal: boolean }[] = [];
+    let normalMinutes = 0;
     for (let i = 0; i < points.length - 1; i += 1) {
       const a = points[i];
       const b = points[i + 1];
-      segments.push({ d: `M ${a.x} ${a.y} L ${b.x} ${b.y}`, normal: a.normal && b.normal });
+      const normal = a.normal && b.normal;
+      segments.push({ d: `M ${a.x} ${a.y} L ${b.x} ${b.y}`, normal });
+      if (normal) normalMinutes += series[i + 1].minute - series[i].minute;
     }
+    const totalMinutes = series.length > 1 ? series[series.length - 1].minute - series[0].minute : 0;
     return {
       segments,
       maxValue,
       peak: Math.max(...series.map((point) => point.value)),
+      normalPercent: totalMinutes > 0 ? Math.round((normalMinutes / totalMinutes) * 100) : 100,
       hasData: insulinCurves.some((curve) => curve.points.length > 0),
     };
   }, [insulinCurves]);
@@ -186,9 +194,9 @@ function DashboardContent() {
           <Text style={styles.cardLabel}>Net calories</Text>
           <Text style={[styles.cardNumber, { color: netCaloriesColor }]}>{netCalories}</Text>
           <View style={styles.macrosRow}>
-            <Macro label="Resting flame" value={`-${passiveCaloriesForRange} kcal`} />
-            <Macro label="Active burn" value={`-${summaryData.calories_burned} kcal`} />
-            <Macro label="Food intake" value={`+${summaryData.calories_intake} kcal`} />
+            <Macro label="Passive burn" value={`- ${passiveCaloriesForRange} kcal`} />
+            <Macro label="Active burn" value={`- ${summaryData.calories_burned} kcal`} />
+            <Macro label="Food intake" value={`+ ${summaryData.calories_intake} kcal`} />
           </View>
         </View>
 
@@ -209,7 +217,13 @@ function DashboardContent() {
 
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardLabel}>Insulin level today</Text>
+            <View style={styles.cardHeaderTop}>
+              <Text style={styles.cardLabel}>Insulin level today</Text>
+              <View style={styles.insulinNormalBadge}>
+                <Feather name="zap" size={13} color={colors.green} />
+                <Text style={styles.insulinNormalText}>{insulinChart.normalPercent}% normal</Text>
+              </View>
+            </View>
             <Text style={styles.chartPeak}>Peak {Math.round(insulinChart.peak)}</Text>
           </View>
           <View style={styles.chartRow}>
@@ -235,9 +249,9 @@ function DashboardContent() {
             </View>
           </View>
           <View style={styles.xAxis}>
-            {[0, 360, 720, 1080, 1439].map((minute) => (
-              <Text key={minute} style={styles.axisText}>
-                {formatHour(minute)}
+            {[0, 360, 720, 1080, 1439].map((displayMinute) => (
+              <Text key={displayMinute} style={styles.axisText}>
+                {displayMinute === 0 || displayMinute === 1439 ? formatHour(fromDisplayMinutes(0)) : formatHour(fromDisplayMinutes(displayMinute))}
               </Text>
             ))}
           </View>
@@ -379,6 +393,26 @@ const styles = StyleSheet.create({
   },
   cardHeaderRow: {
     gap: 4,
+  },
+  cardHeaderTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  insulinNormalBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 999,
+    backgroundColor: colors.greenSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  insulinNormalText: {
+    color: colors.green,
+    fontSize: 12,
+    fontWeight: "700",
   },
   chartPeak: {
     color: colors.blue,

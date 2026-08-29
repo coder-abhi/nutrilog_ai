@@ -37,6 +37,18 @@ export function formatSliderTime(minutes: number) {
   return `${hours % 12 || 12}:${String(mins).padStart(2, "0")} ${suffix}`;
 }
 
+// The day-time slider and insulin chart show a "night" window from 3 AM to the next 3 AM
+// (rather than midnight to midnight), since most people's day naturally starts around then.
+export const DAY_WINDOW_START_MINUTES = 3 * 60;
+
+export function toDisplayMinutes(actualMinutes: number) {
+  return (actualMinutes - DAY_WINDOW_START_MINUTES + 1440) % 1440;
+}
+
+export function fromDisplayMinutes(displayMinutes: number) {
+  return (displayMinutes + DAY_WINDOW_START_MINUTES) % 1440;
+}
+
 // "YYYY-MM-DD" -> short weekday label, e.g. "Mon". Used for the last-7-days tracker graphs.
 export function formatWeekday(dateStr: string) {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, { weekday: "short" });

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { useAuth } from "@/auth/AuthContext";
@@ -41,6 +41,11 @@ export function AuthForm() {
   const [submitting, setSubmitting] = useState(false);
 
   const isSignUp = mode === "signup";
+  const visibleGoals = gender === "female" ? goals : goals.filter((goal) => goal.value !== "pcos");
+
+  useEffect(() => {
+    if (gender !== "female") setSelectedGoals((current) => current.filter((goal) => goal !== "pcos"));
+  }, [gender]);
 
   const submit = async (skipProfile = false) => {
     setError("");
@@ -125,7 +130,7 @@ export function AuthForm() {
               <Text style={styles.heading}>Choose your goals</Text>
               <Text style={styles.goalSub}>Optional. Pick as many as apply, or skip and fill them later.</Text>
               <View style={styles.goalGrid}>
-                {goals.map((goal) => {
+                {visibleGoals.map((goal) => {
                   const active = selectedGoals.includes(goal.value);
                   return (
                     <Pressable

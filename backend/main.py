@@ -360,8 +360,12 @@ def _tracker_card_payload(card, entries_by_card=None):
 @app.get("/tracker_cards")
 def list_tracker_cards(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     cards = get_tracker_cards(db, current_user.username)
-    end_date = date.today()
-    start_date = end_date - timedelta(days=89)
+    # Server "today" is computed in server-local time, but a client ahead of the server
+    # (e.g. UTC+5:30 just after midnight) can already be logging entries dated "tomorrow"
+    # from the server's point of view. Pad the window so those entries aren't filtered out
+    # of the graph/streak data right after they're created.
+    end_date = date.today() + timedelta(days=1)
+    start_date = end_date - timedelta(days=90)
     entries = get_tracker_entries(db, current_user.username, start_date=start_date, end_date=end_date)
     entries_by_card = {}
     for entry in entries:

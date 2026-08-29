@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SignedOutError, useApi } from "@/hooks/useApi";
 import { colors } from "@/styles/theme";
-import { formatSliderTime } from "@/utils/date";
+import { formatSliderTime, fromDisplayMinutes, toDisplayMinutes } from "@/utils/date";
 
 export type LogResult = {
   calories_intake?: number;
@@ -108,13 +108,22 @@ export function BottomLogInput({ logDate, onLogged }: { logDate: string; onLogge
               </Pressable>
             </View>
             <View style={styles.timeSteps}>
-              {[0, 360, 720, 1080, 1439].map((minute) => (
-                <Pressable key={minute} style={styles.timeStep} onPress={() => setLogTimeMinutes(minute)}>
-                  <Text style={[styles.timeStepText, Math.abs(logTimeMinutes - minute) < 120 && styles.timeStepActive]}>
-                    {formatSliderTime(minute).replace(":00 ", "")}
-                  </Text>
-                </Pressable>
-              ))}
+              {[0, 360, 720, 1080, 1439].map((displayMinute) => {
+                const minute = fromDisplayMinutes(displayMinute);
+                const label = displayMinute === 0 || displayMinute === 1439 ? formatSliderTime(fromDisplayMinutes(0)) : formatSliderTime(minute);
+                return (
+                  <Pressable key={displayMinute} style={styles.timeStep} onPress={() => setLogTimeMinutes(minute)}>
+                    <Text
+                      style={[
+                        styles.timeStepText,
+                        Math.abs(toDisplayMinutes(logTimeMinutes) - displayMinute) < 120 && styles.timeStepActive,
+                      ]}
+                    >
+                      {label.replace(":00 ", "")}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
             <TimeSlider value={logTimeMinutes} onChange={setLogTimeMinutes} />
           </View>
@@ -152,7 +161,8 @@ function TimeSlider({ value, onChange }: { value: number; onChange: (minutes: nu
     const width = trackWidthRef.current;
     if (width <= 0) return;
     const ratio = Math.min(1, Math.max(0, x / width));
-    const next = Math.round((ratio * 1439) / 5) * 5;
+    const nextDisplay = Math.round((ratio * 1439) / 5) * 5;
+    const next = fromDisplayMinutes(nextDisplay);
     if (next === lastEmitted.current) return;
     lastEmitted.current = next;
     onChangeRef.current(next);
@@ -170,7 +180,7 @@ function TimeSlider({ value, onChange }: { value: number; onChange: (minutes: nu
     }),
   ).current;
 
-  const ratio = Math.min(1, Math.max(0, value / 1439));
+  const ratio = Math.min(1, Math.max(0, toDisplayMinutes(value) / 1439));
 
   return (
     <View
