@@ -20,7 +20,7 @@ export default function Header() {
     const { user, signOut } = useAuth();
     const pathname = usePathname();
     const [menuOpen, setMenuOpen] = useState(false);
-    const userGoal = user?.goal ? goalLabels[user.goal] ?? user.goal : "";
+    const userGoal = (user?.goals ?? []).map((goal) => goalLabels[goal] ?? goal).join(", ");
     const closeMenu = () => setMenuOpen(false);
     const handleSignOut = () => {
       closeMenu();

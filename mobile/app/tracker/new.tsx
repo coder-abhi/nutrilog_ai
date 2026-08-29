@@ -22,6 +22,7 @@ function NewTrackerContent() {
   const [name, setName] = useState("");
   const [valueType, setValueType] = useState<"boolean" | "numeric">("boolean");
   const [targetDays, setTargetDays] = useState(7);
+  const [targetValue, setTargetValue] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -31,13 +32,21 @@ function NewTrackerContent() {
       setError("Name is required.");
       return;
     }
+    if (valueType === "numeric" && (!targetValue || Number(targetValue) <= 0)) {
+      setError("Enter a valid weekly target.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/tracker_cards`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ name, value_type: valueType, target_days_per_week: targetDays, description }),
+        body: JSON.stringify(
+          valueType === "numeric"
+            ? { name, value_type: valueType, target_value: Number(targetValue), description }
+            : { name, value_type: valueType, target_days_per_week: targetDays, description },
+        ),
       });
       const data = await res.json();
       if (res.status === 401) {
@@ -73,16 +82,26 @@ function NewTrackerContent() {
             <Choice label="Numerical" active={valueType === "numeric"} onPress={() => setValueType("numeric")} />
           </View>
 
-          <View style={styles.field}>
-            <Text style={styles.label}>Weekly target</Text>
-            <View style={styles.daysRow}>
-              {[1, 2, 3, 4, 5, 6, 7].map((day) => (
-                <Pressable key={day} style={[styles.dayChip, targetDays === day && styles.dayChipActive]} onPress={() => setTargetDays(day)}>
-                  <Text style={[styles.dayChipText, targetDays === day && styles.dayChipTextActive]}>{day}</Text>
-                </Pressable>
-              ))}
+          {valueType === "numeric" ? (
+            <Field
+              label="Weekly target"
+              value={targetValue}
+              onChangeText={setTargetValue}
+              placeholder="e.g. 50"
+              keyboardType="numeric"
+            />
+          ) : (
+            <View style={styles.field}>
+              <Text style={styles.label}>Weekly target</Text>
+              <View style={styles.daysRow}>
+                {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+                  <Pressable key={day} style={[styles.dayChip, targetDays === day && styles.dayChipActive]} onPress={() => setTargetDays(day)}>
+                    <Text style={[styles.dayChipText, targetDays === day && styles.dayChipTextActive]}>{day}</Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
-          </View>
+          )}
 
           <Field label="Description" value={description} onChangeText={setDescription} placeholder="Examples: pushups, push ups, did reps. Extract the number of pushups." multiline numberOfLines={4} />
           {!!error && <Text style={styles.error}>{error}</Text>}

@@ -40,7 +40,7 @@ export default function AuthForm() {
   const [submitting, setSubmitting] = useState(false);
 
   const [step, setStep] = useState<1 | 2>(1);
-  const [selectedGoal, setSelectedGoal] = useState<GoalValue | null>(null);
+  const [selectedGoals, setSelectedGoals] = useState<GoalValue[]>([]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,7 +87,7 @@ export default function AuthForm() {
       return;
     }
 
-    if (selectedGoal === "weight_loss" && targetWeightKg && (isNaN(tw) || tw <= 0)) {
+    if (selectedGoals.includes("weight_loss") && targetWeightKg && (isNaN(tw) || tw <= 0)) {
       setError("Enter a valid target weight (kg), or leave it empty.");
       return;
     }
@@ -98,11 +98,11 @@ export default function AuthForm() {
       username: username.trim(),
       password,
       weight_kg: weightKg ? w : DEFAULT_PROFILE.weightKg,
-      target_weight_kg: selectedGoal === "weight_loss" && targetWeightKg ? tw : DEFAULT_PROFILE.targetWeightKg,
+      target_weight_kg: selectedGoals.includes("weight_loss") && targetWeightKg ? tw : DEFAULT_PROFILE.targetWeightKg,
       height_cm: heightCm ? h : DEFAULT_PROFILE.heightCm,
       gender,
       activity_level: activityLevel,
-      goal: selectedGoal ?? "",
+      goals: selectedGoals,
     });
 
     setSubmitting(false);
@@ -188,9 +188,9 @@ export default function AuthForm() {
           )}
 
           {isSignUp && step === 2 && (
-            <GoalSelection 
-            selectedGoal={selectedGoal}
-            onGoalChange={setSelectedGoal} 
+            <GoalSelection
+            selectedGoals={selectedGoals}
+            onGoalChange={setSelectedGoals}
             onWeightChange = {setWeightKg} 
             onTargetWeightChange = {setTargetWeightKg}
             onHeightChange = {setHeightCm}
@@ -244,7 +244,7 @@ export default function AuthForm() {
                 setMode(isSignUp ? "signin" : "signup");
                 setError("");
                 setStep(1);
-                setSelectedGoal(null);
+                setSelectedGoals([]);
               }}
             >
               {isSignUp ? "Already have an account? Sign in" : "No account? Sign up"}

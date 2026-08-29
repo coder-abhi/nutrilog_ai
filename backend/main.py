@@ -18,6 +18,7 @@ from crud import (
     create_tracker_card,
     create_user,
     create_weight_entry,
+    decode_goals,
     get_db,
     get_daily_logs,
     get_tracker_card,
@@ -151,7 +152,7 @@ def _user_payload(user):
         "height_cm": user.height_cm,
         "gender": user.gender,
         "activity_level": user.activity_level,
-        "goal": user.goal or "",
+        "goals": decode_goals(user.goals),
     }
 
 @app.post("/signup")
@@ -199,7 +200,7 @@ def edit_profile(data: ProfileUpdateInput, db: Session = Depends(get_db), curren
         height_cm=data.height_cm,
         gender=data.gender,
         activity_level=data.activity_level,
-        goal=data.goal,
+        goals=data.goals,
     )
     if user is None:
         raise HTTPException(status_code=404, detail="User not found.")
@@ -330,6 +331,7 @@ def _tracker_card_payload(card, entries_by_card=None):
         "name": card.name,
         "value_type": card.value_type,
         "target_days_per_week": card.target_days_per_week,
+        "target_value": card.target_value,
         "description": card.description or "",
         "is_visible": bool(card.is_visible),
         "created_at": card.created_at.isoformat() if card.created_at else None,
@@ -365,12 +367,21 @@ def add_tracker_card(data: TrackerCardInput, db: Session = Depends(get_db), curr
     value_type = data.value_type
     if not name:
         raise HTTPException(status_code=400, detail="Tracker name is required.")
+    if value_type == "numeric":
+        if not data.target_value or data.target_value <= 0:
+            raise HTTPException(status_code=400, detail="Weekly target is required for numeric trackers.")
+        target_days_per_week = 7
+        target_value = data.target_value
+    else:
+        target_days_per_week = data.target_days_per_week or 7
+        target_value = None
     card = create_tracker_card(
         db,
         current_user.username,
         name=name,
         value_type=value_type,
-        target_days_per_week=data.target_days_per_week,
+        target_days_per_week=target_days_per_week,
+        target_value=target_value,
         description=data.description,
     )
     return _tracker_card_payload(card)
@@ -381,12 +392,24 @@ def edit_tracker_card(tracker_id: str, data: TrackerCardUpdateInput, db: Session
     name = data.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Tracker name is required.")
+    existing = get_tracker_card(db, current_user.username, tracker_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Tracker card not found.")
+    if existing.value_type == "numeric":
+        if not data.target_value or data.target_value <= 0:
+            raise HTTPException(status_code=400, detail="Weekly target is required for numeric trackers.")
+        target_days_per_week = 7
+        target_value = data.target_value
+    else:
+        target_days_per_week = data.target_days_per_week or 7
+        target_value = None
     card = update_tracker_card(
         db,
         current_user.username,
         tracker_id,
         name=name,
-        target_days_per_week=data.target_days_per_week,
+        target_days_per_week=target_days_per_week,
+        target_value=target_value,
         description=data.description,
     )
     if card is None:
@@ -418,6 +441,9 @@ def add_tracker_entry(data: TrackerEntryInput, db: Session = Depends(get_db), cu
         entry_date = date.today()
     value = (1 if data.value > 0 else 0) if card.value_type == "boolean" else data.value
     entry = upsert_tracker_entry(db, current_user.username, card.id, entry_date, value, add_to_existing=card.value_type == "numeric")
+    if card.value_type == "numeric" and entry.value < 0:
+        entry.value = 0
+        db.commit()
     return {
         "id": entry.id,
         "tracker_id": entry.tracker_id,
@@ -530,12 +556,24 @@ def analyze_food(data: ActivityInput, db: Session = Depends(get_db), current_use
         "height": current_user.height_cm,
         "activity_level": current_user.activity_level,
     }
+    activity_level_descriptions = {
+        "sedentary": "Barely any walking (under ~1 km/day), no sport or gym.",
+        "low": "Light week - a sport, walk or workout roughly once a week.",
+        "moderate": "Gym, sport or a long walk ~3x a week, or ~8k steps most days.",
+        "high": "Training hard 5-6x a week, or a physically demanding job.",
+        "very_high": "Intense training most days or heavy manual labour.",
+    }
+    activity_level_description = activity_level_descriptions.get(
+        user_config["activity_level"], "Unknown activity level."
+    )
     system_prompt = f"""
 You are a structured health data extraction and estimation engine.
 User details:
 Age: {user_config['age']}
 Weight: {user_config['weight']} kg
+Height: {user_config['height']} cm
 Gender: {user_config['gender']}
+Baseline activity level: {user_config['activity_level']} ({activity_level_description})
 Region: India, Maharastra
 From the user's sentence, extract:
 
@@ -587,7 +625,7 @@ Rules:
 - Always include unit.
 - If qty or unit is not very clear in input then make realistic guess using activity or food
 - Estimate realistic nutritional values.
-- Estimate calories burned using user weight and realistic MET values.
+- Estimate calories burned using user weight and realistic MET values, adjusted for the user's baseline activity level (e.g. a "high"/"very_high" user performing a workout is likely more conditioned and efficient than a "sedentary" user doing the same activity).
 - If a category has no entries, return an empty array.
 - Do not invent unrealistic quantities.
 - Insulin curve values are relative to the meal time.

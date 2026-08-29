@@ -1,5 +1,16 @@
-import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Keyboard,
+  KeyboardAvoidingView,
+  PanResponder,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/auth/AuthContext";
@@ -29,13 +40,18 @@ export function BottomLogInput({ logDate, onLogged }: { logDate: string; onLogge
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
     const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSubscription = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardVisible(true);
+      setKeyboardHeight(event?.endCoordinates?.height ?? 0);
+    });
     const hideSubscription = Keyboard.addListener(hideEvent, () => {
       setKeyboardVisible(false);
+      setKeyboardHeight(0);
     });
 
     return () => {
@@ -75,20 +91,27 @@ export function BottomLogInput({ logDate, onLogged }: { logDate: string; onLogge
     }
   };
 
+  // Lift the bar so it sits directly above the on-screen keyboard on both platforms.
+  // In Android edge-to-edge mode the reported keyboard height excludes the nav-bar
+  // inset, so add it back to keep the whole input (and its placeholder) visible.
+  const restingMargin = Math.max(insets.bottom, 14);
+  const keyboardLift = keyboardHeight + (Platform.OS === "android" ? insets.bottom : 0);
+  const footerMargin = keyboardVisible && keyboardHeight > 0 ? keyboardLift + 8 : restingMargin;
+
   return (
-    <KeyboardAvoidingView
-      pointerEvents="box-none"
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={0}
-      style={styles.footerLayer}
-    >
-      <View style={[styles.footer, { marginBottom: keyboardVisible ? 0 : Math.max(insets.bottom, 14) }]}>
+    <KeyboardAvoidingView pointerEvents="box-none" behavior={undefined} keyboardVerticalOffset={0} style={styles.footerLayer}>
+      <View style={[styles.footer, { marginBottom: footerMargin }]}>
         {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
         {!!input.trim() && (
           <View style={styles.timeBox}>
             <View style={styles.timeHeader}>
-              <Text style={styles.timeLabel}>Log time</Text>
-              <Text style={styles.timeValue}>{formatSliderTime(logTimeMinutes)}</Text>
+              <Text style={styles.timeLabel}>
+                Log time <Text style={styles.timeHint}>(select approx time if not current time)</Text>
+              </Text>
+              <Pressable style={styles.nowButton} onPress={() => setLogTimeMinutes(getCurrentMinutes())}>
+                <Text style={styles.nowButtonText}>{formatSliderTime(logTimeMinutes)}</Text>
+                <Text style={styles.nowButtonHint}>tap for now</Text>
+              </Pressable>
             </View>
             <View style={styles.timeSteps}>
               {[0, 360, 720, 1080, 1439].map((minute) => (
@@ -99,6 +122,7 @@ export function BottomLogInput({ logDate, onLogged }: { logDate: string; onLogge
                 </Pressable>
               ))}
             </View>
+            <TimeSlider value={logTimeMinutes} onChange={setLogTimeMinutes} />
           </View>
         )}
         <View style={styles.row}>
@@ -117,6 +141,57 @@ export function BottomLogInput({ logDate, onLogged }: { logDate: string; onLogge
         </View>
       </View>
     </KeyboardAvoidingView>
+  );
+}
+
+function TimeSlider({ value, onChange }: { value: number; onChange: (minutes: number) => void }) {
+  const [trackWidth, setTrackWidth] = useState(0);
+  const trackWidthRef = useRef(0);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  // Track the last value we know about so external resets (e.g. the "now" button) stay in sync.
+  const lastEmitted = useRef(value);
+  lastEmitted.current = value;
+
+  const updateFromX = (x: number) => {
+    const width = trackWidthRef.current;
+    if (width <= 0) return;
+    const ratio = Math.min(1, Math.max(0, x / width));
+    const next = Math.round((ratio * 1439) / 5) * 5;
+    if (next === lastEmitted.current) return;
+    lastEmitted.current = next;
+    onChangeRef.current(next);
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: (evt) => updateFromX(evt.nativeEvent.locationX),
+      onPanResponderMove: (evt) => updateFromX(evt.nativeEvent.locationX),
+    }),
+  ).current;
+
+  const ratio = Math.min(1, Math.max(0, value / 1439));
+
+  return (
+    <View
+      style={styles.sliderTrack}
+      onLayout={(e) => {
+        const w = e.nativeEvent.layout.width;
+        trackWidthRef.current = w;
+        setTrackWidth(w);
+      }}
+      {...panResponder.panHandlers}
+    >
+      <View pointerEvents="none" style={styles.sliderBar} />
+      <View pointerEvents="none" style={[styles.sliderFill, { width: ratio * trackWidth }]} />
+      <View pointerEvents="none" style={[styles.sliderThumb, { left: Math.max(0, ratio * trackWidth - 9) }]} />
+    </View>
   );
 }
 
@@ -155,16 +230,43 @@ const styles = StyleSheet.create({
   timeHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "flex-start",
     marginBottom: 6,
   },
   timeLabel: {
+    flex: 1,
+    marginRight: 8,
     color: colors.muted,
     fontSize: 12,
+  },
+  timeHint: {
+    color: colors.quiet,
+    fontSize: 11,
   },
   timeValue: {
     color: colors.ink,
     fontWeight: "700",
     fontSize: 13,
+  },
+  nowButton: {
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.ink,
+    backgroundColor: colors.panel,
+  },
+  nowButtonText: {
+    color: colors.ink,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  nowButtonHint: {
+    color: colors.quiet,
+    fontSize: 9,
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
   },
   timeSteps: {
     flexDirection: "row",
@@ -180,6 +282,35 @@ const styles = StyleSheet.create({
   timeStepActive: {
     color: colors.ink,
     fontWeight: "700",
+  },
+  sliderTrack: {
+    marginTop: 10,
+    height: 26,
+    justifyContent: "center",
+  },
+  sliderBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: colors.line,
+  },
+  sliderFill: {
+    position: "absolute",
+    left: 0,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: colors.ink,
+  },
+  sliderThumb: {
+    position: "absolute",
+    width: 18,
+    height: 18,
+    borderRadius: 999,
+    backgroundColor: colors.ink,
+    borderWidth: 2,
+    borderColor: colors.panel,
   },
   row: {
     flexDirection: "row",

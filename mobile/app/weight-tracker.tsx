@@ -12,11 +12,9 @@ import { colors, shadow } from "@/styles/theme";
 import { toYMD } from "@/utils/date";
 
 type WeightEntry = { value_kg: number; recorded_at: string | null };
-type RangeKey = "week" | "month" | "year" | "all";
+type RangeKey = "year" | "all";
 
 const ranges: { value: RangeKey; label: string; days?: number }[] = [
-  { value: "week", label: "Week", days: 7 },
-  { value: "month", label: "Month", days: 30 },
   { value: "year", label: "Year", days: 365 },
   { value: "all", label: "All time" },
 ];
@@ -35,7 +33,7 @@ function WeightTrackerContent() {
   const [loading, setLoading] = useState(true);
   const [logWeightValue, setLogWeightValue] = useState("");
   const [logWeightDate, setLogWeightDate] = useState(() => toYMD(new Date()));
-  const [viewRange, setViewRange] = useState<RangeKey>("month");
+  const [viewRange, setViewRange] = useState<RangeKey>("year");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -90,6 +88,23 @@ function WeightTrackerContent() {
     .map((entry, index) => `${(visible.length - 1 ? index / (visible.length - 1) : 0.5) * 100},${((max - entry.value_kg) / (max - min || 1)) * 100}`)
     .join(" ");
   const targetY = ((max - targetWeightKg) / (max - min || 1)) * 100;
+
+  const xTicks = useMemo(() => {
+    if (visible.length === 0) return [];
+    const tickCount = Math.min(6, visible.length);
+    const seen = new Set<number>();
+    const ticks: { pct: number; label: string }[] = [];
+    for (let i = 0; i < tickCount; i++) {
+      const idx = tickCount === 1 ? visible.length - 1 : Math.round((i * (visible.length - 1)) / (tickCount - 1));
+      if (seen.has(idx)) continue;
+      seen.add(idx);
+      const entry = visible[idx];
+      if (!entry.hasDate) continue;
+      const pct = visible.length - 1 ? (idx / (visible.length - 1)) * 100 : 50;
+      ticks.push({ pct, label: new Date(entry.sortTime).toLocaleDateString(undefined, { month: "short" }) });
+    }
+    return ticks;
+  }, [visible]);
 
   const logWeight = async () => {
     const value = Number(logWeightValue);
@@ -161,22 +176,31 @@ function WeightTrackerContent() {
                   </Text>
                 ))}
               </View>
-              <View style={styles.plot}>
-                <Svg viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="none">
-                  {targetY >= 0 && targetY <= 100 && <Line x1="0" x2="100" y1={targetY} y2={targetY} stroke="#22c55e" strokeWidth="0.6" strokeDasharray="2 2" />}
-                  <Polyline points={points} fill="none" stroke={colors.blue} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  {visible.map((entry, index) => (
-                    <Circle
-                      key={`${entry.recorded_at ?? "point"}-${index}`}
-                      cx={(visible.length - 1 ? index / (visible.length - 1) : 0.5) * 100}
-                      cy={((max - entry.value_kg) / (max - min || 1)) * 100}
-                      r="1.5"
-                      fill={colors.blue}
-                      stroke="#fff"
-                      strokeWidth="0.8"
-                    />
+              <View style={styles.plotWrap}>
+                <View style={styles.plot}>
+                  <Svg viewBox="0 0 100 100" width="100%" height="100%" preserveAspectRatio="none">
+                    {targetY >= 0 && targetY <= 100 && <Line x1="0" x2="100" y1={targetY} y2={targetY} stroke="#22c55e" strokeWidth="0.6" strokeDasharray="2 2" />}
+                    <Polyline points={points} fill="none" stroke={colors.blue} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    {visible.map((entry, index) => (
+                      <Circle
+                        key={`${entry.recorded_at ?? "point"}-${index}`}
+                        cx={(visible.length - 1 ? index / (visible.length - 1) : 0.5) * 100}
+                        cy={((max - entry.value_kg) / (max - min || 1)) * 100}
+                        r="1.5"
+                        fill={colors.blue}
+                        stroke="#fff"
+                        strokeWidth="0.8"
+                      />
+                    ))}
+                  </Svg>
+                </View>
+                <View style={styles.xAxis}>
+                  {xTicks.map((tick, index) => (
+                    <Text key={index} style={[styles.axisText, styles.xAxisLabel, { left: `${tick.pct}%` }]}>
+                      {tick.label}
+                    </Text>
                   ))}
-                </Svg>
+                </View>
               </View>
             </View>
           ) : (
@@ -247,10 +271,13 @@ const styles = StyleSheet.create({
   buttonText: { color: "#f9fafb", fontWeight: "600" },
   error: { color: "#b91c1c", fontSize: 13 },
   chartHeader: { gap: 12, alignItems: "flex-start" },
-  chartGrid: { height: 220, flexDirection: "row", gap: 10 },
+  chartGrid: { height: 240, flexDirection: "row", gap: 10 },
   yAxis: { justifyContent: "space-between", paddingVertical: 2 },
   axisText: { color: colors.muted, fontSize: 11 },
+  plotWrap: { flex: 1 },
   plot: { flex: 1, borderLeftWidth: 1, borderBottomWidth: 1, borderColor: colors.line, backgroundColor: "#f8fafc" },
+  xAxis: { height: 18, marginTop: 4 },
+  xAxisLabel: { position: "absolute", top: 0, transform: [{ translateX: -14 }] },
   emptyChart: { overflow: "hidden", borderRadius: 14, borderWidth: 1, borderStyle: "dashed", borderColor: "#d1d5db", padding: 24, color: colors.muted, textAlign: "center" },
   entriesSection: { gap: 8 },
   entryRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: colors.line },

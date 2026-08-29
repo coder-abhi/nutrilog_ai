@@ -1,19 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
 import { useAuth } from "@/auth/AuthContext";
 import { AuthGate } from "@/components/AuthGate";
 import { BottomLogInput } from "@/components/BottomLogInput";
+import { DashboardTrackers } from "@/components/DashboardTrackers";
 import { Header } from "@/components/Header";
 import { GradientScreen } from "@/components/Screen";
 import { Segmented } from "@/components/Segmented";
 import { API_BASE_URL } from "@/config/api";
 import { colors, shadow } from "@/styles/theme";
-import type { ActivityEntry, FoodEntry, SummaryData } from "@/types";
+import type { SummaryData } from "@/types";
 import { formatDisplayDate, formatHour, toYMD } from "@/utils/date";
 
-type LogEntry = (FoodEntry & { kind: "food" }) | (ActivityEntry & { kind: "activity" });
 type DashboardRange = "today" | "week" | "month";
 type InsulinCurve = { timestamp: string | null; points: { minute: number; value: number }[] };
 
@@ -26,25 +26,6 @@ const emptySummary: SummaryData = {
   sugar: 0,
 };
 
-function buildSmoothPath(points: { x: number; y: number }[]) {
-  if (!points.length) return "";
-  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
-  return (
-    points.reduce((path, point, index) => {
-      if (index === 0) return `M ${point.x} ${point.y}`;
-      const prev = points[index - 1];
-      const midX = (prev.x + point.x) / 2;
-      const midY = (prev.y + point.y) / 2;
-      return `${path} Q ${prev.x} ${prev.y} ${midX} ${midY}`;
-    }, "") + ` T ${points[points.length - 1].x} ${points[points.length - 1].y}`
-  );
-}
-
-function getEntryKey(entry: LogEntry, index: number) {
-  const label = entry.kind === "activity" ? entry.type : entry.name;
-  return [entry.kind, entry.timestamp ?? "no-time", label, entry.quantity, entry.unit, index].join("-");
-}
-
 export default function DashboardPage() {
   return (
     <AuthGate>
@@ -56,11 +37,8 @@ export default function DashboardPage() {
 function DashboardContent() {
   const { user, signOut, getAuthHeaders } = useAuth();
   const [summaryData, setSummaryData] = useState<SummaryData>(emptySummary);
-  const [entries, setEntries] = useState<LogEntry[]>([]);
   const [insulinCurves, setInsulinCurves] = useState<InsulinCurve[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState(() => toYMD(new Date()));
+  const [selectedDate] = useState(() => toYMD(new Date()));
   const [dashboardRange, setDashboardRange] = useState<DashboardRange>("today");
   const [passiveCalorie, setPassiveCalorie] = useState(0);
 
@@ -82,27 +60,14 @@ function DashboardContent() {
 
   const fetchDashboardSummary = useCallback(async () => {
     if (!user?.username) return;
-    setLoading(true);
-    setLoadError(null);
     try {
       const result = await fetchSummaryForRange(selectedDate, selectedRangeDays);
       if (!result) return;
       setSummaryData({ ...emptySummary, ...result.summary });
-      setEntries(
-        [
-            ...((result.foods ?? []).map((entry: FoodEntry) => ({ ...entry, kind: "food" as const }))),
-            ...((result.activities ?? []).map((entry: ActivityEntry) => ({ ...entry, kind: "activity" as const }))),
-          ]
-          .sort((a, b) => new Date(b.timestamp ?? 0).getTime() - new Date(a.timestamp ?? 0).getTime()),
-      );
       setInsulinCurves(result.insulin_curves ?? []);
     } catch {
       setSummaryData(emptySummary);
-      setEntries([]);
       setInsulinCurves([]);
-      setLoadError("Could not load dashboard data. Please try again.");
-    } finally {
-      setLoading(false);
     }
   }, [fetchSummaryForRange, selectedDate, selectedRangeDays, user?.username]);
 
@@ -143,11 +108,21 @@ function DashboardContent() {
       .sort((a, b) => a - b)
       .map((minute) => ({ minute, value: Math.min(100, 8 + (contributions.get(minute) ?? 0)) }));
     const maxValue = Math.max(20, ...series.map((point) => point.value));
-    const points = series.map((point) => ({ x: (point.minute / 1439) * 100, y: 100 - (point.value / maxValue) * 100 }));
-    const path = buildSmoothPath(points);
+    // Insulin sits near the baseline (8) at rest; treat small deviations as "back to normal".
+    const NORMAL_MAX = 14;
+    const points = series.map((point) => ({
+      x: (point.minute / 1439) * 100,
+      y: 100 - (point.value / maxValue) * 100,
+      normal: point.value <= NORMAL_MAX,
+    }));
+    const segments: { d: string; normal: boolean }[] = [];
+    for (let i = 0; i < points.length - 1; i += 1) {
+      const a = points[i];
+      const b = points[i + 1];
+      segments.push({ d: `M ${a.x} ${a.y} L ${b.x} ${b.y}`, normal: a.normal && b.normal });
+    }
     return {
-      path,
-      areaPath: path ? `${path} L 100 100 L 0 100 Z` : "",
+      segments,
       maxValue,
       peak: Math.max(...series.map((point) => point.value)),
       hasData: insulinCurves.some((curve) => curve.points.length > 0),
@@ -157,8 +132,8 @@ function DashboardContent() {
   const sugarLimit = 25 * selectedRangeDays;
   const passiveCaloriesForRange = Math.round(passiveCalorie * selectedRangeDays);
   const netCalories = summaryData.calories_intake - summaryData.calories_burned - passiveCaloriesForRange;
-  const rangeLabel = dashboardRange === "today" ? "Selected day" : dashboardRange === "week" ? "Last 7 days" : "Last 30 days";
   const sugarExceeded = summaryData.sugar > sugarLimit;
+  const netCaloriesColor = netCalories < 0 ? colors.green : netCalories > 500 ? colors.red : colors.ink;
 
   return (
     <GradientScreen>
@@ -167,7 +142,6 @@ function DashboardContent() {
         <View style={styles.topBar}>
           <View style={styles.datePill}>
             <Text style={styles.dateText}>{formatDisplayDate(selectedDate)}</Text>
-            <TextInput value={selectedDate} onChangeText={setSelectedDate} style={styles.dateInput} placeholder="YYYY-MM-DD" />
           </View>
           <Segmented
             value={dashboardRange}
@@ -178,16 +152,15 @@ function DashboardContent() {
               { value: "month", label: "Month" },
             ]}
           />
-          <Text style={styles.rangeHint}>{rangeLabel}</Text>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.cardLabel}>Net calories</Text>
-          <Text style={styles.cardNumber}>{netCalories}</Text>
+          <Text style={[styles.cardNumber, { color: netCaloriesColor }]}>{netCalories}</Text>
           <View style={styles.macrosRow}>
-            <Macro label="Food intake" value={`${summaryData.calories_intake} kcal`} />
-            <Macro label="Resting flame" value={`${passiveCaloriesForRange} kcal`} />
-            <Macro label="Active burn" value={`${summaryData.calories_burned} kcal`} />
+            <Macro label="Resting flame" value={`-${passiveCaloriesForRange} kcal`} />
+            <Macro label="Active burn" value={`-${summaryData.calories_burned} kcal`} />
+            <Macro label="Food intake" value={`+${summaryData.calories_intake} kcal`} />
           </View>
         </View>
 
@@ -207,16 +180,8 @@ function DashboardContent() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardLabel}>Calories Burned</Text>
-          <View style={styles.macrosRow}>
-            <Macro label="Resting Flame" value={`${passiveCaloriesForRange} kcal`} />
-            <Macro label="Active Burn" value={`${summaryData.calories_burned} kcal`} />
-          </View>
-        </View>
-
-        <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardLabel}>Postprandial insulin</Text>
+            <Text style={styles.cardLabel}>Insulin level today</Text>
             <Text style={styles.chartPeak}>Peak {Math.round(insulinChart.peak)}</Text>
           </View>
           <View style={styles.chartRow}>
@@ -226,8 +191,18 @@ function DashboardContent() {
             </View>
             <View style={styles.plot}>
               <Svg viewBox="0 0 100 100" preserveAspectRatio="none" width="100%" height="100%">
-                <Path d={insulinChart.areaPath} fill="rgba(37,99,235,0.12)" />
-                <Path d={insulinChart.path} fill="none" stroke={colors.blue} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                {insulinChart.segments.map((segment, index) => (
+                  <Path
+                    key={index}
+                    d={segment.d}
+                    fill="none"
+                    stroke={segment.normal ? "#16a34a" : colors.blue}
+                    strokeWidth={1}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
               </Svg>
             </View>
           </View>
@@ -238,35 +213,13 @@ function DashboardContent() {
               </Text>
             ))}
           </View>
-          {!insulinChart.hasData && <Text style={styles.chartEmptyHint}>Log a meal to see the response curve.</Text>}
+          <Text style={styles.chartLegend}>
+            <Text style={{ color: "#16a34a" }}>Green</Text> normal · <Text style={{ color: colors.blue }}>Blue</Text> raised — watch how long a meal keeps it up
+          </Text>
+          {!insulinChart.hasData && <Text style={styles.chartEmptyHint}>Log a meal to see how it moves your insulin.</Text>}
         </View>
 
-        <View style={styles.entriesSection}>
-          <Text style={styles.sectionTitle}>{rangeLabel} log</Text>
-          <Text style={styles.sectionHint}>Use the input at the bottom to quickly log meals or exercise.</Text>
-          {loading ? (
-            <Text style={styles.placeholderCard}>Loading data...</Text>
-          ) : loadError ? (
-            <Text style={styles.placeholderCard} accessibilityRole="alert">{loadError}</Text>
-          ) : entries.length === 0 ? (
-            <Text style={styles.placeholderCard}>No entries yet. Log meals or exercise below to see them here.</Text>
-          ) : (
-            entries.map((entry, i) => (
-              <View key={getEntryKey(entry, i)} style={[styles.foodItem, entry.kind === "activity" ? styles.activityItem : styles.foodLogItem]}>
-                <Text style={styles.entryType}>{entry.kind === "activity" ? "Exercise" : "Food"}</Text>
-                <Text style={styles.foodName}>{entry.kind === "activity" ? entry.type : entry.name}</Text>
-                <Text style={styles.foodQty}>
-                  {entry.quantity} {entry.unit}
-                </Text>
-                <Text style={styles.foodMacros}>
-                  {entry.kind === "activity"
-                    ? `${entry.calories_burned} kcal burned`
-                    : `${entry.calories} kcal · P ${entry.protein}g · C ${entry.carbs}g · F ${entry.fat}g`}
-                </Text>
-              </View>
-            ))
-          )}
-        </View>
+        <DashboardTrackers />
       </ScrollView>
       <BottomLogInput
         logDate={selectedDate}
@@ -321,21 +274,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.panel,
     paddingHorizontal: 15,
     paddingVertical: 8,
-    gap: 4,
   },
   dateText: {
     color: colors.ink,
-    fontSize: 13,
-  },
-  dateInput: {
-    color: colors.muted,
-    minWidth: 110,
-    padding: 0,
-    fontSize: 12,
-  },
-  rangeHint: {
-    width: "100%",
-    color: colors.muted,
     fontSize: 13,
   },
   card: {
@@ -447,65 +388,10 @@ const styles = StyleSheet.create({
     padding: 8,
     fontSize: 12,
   },
-  entriesSection: {
-    gap: 8,
-  },
-  sectionTitle: {
-    color: colors.ink,
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  sectionHint: {
+  chartLegend: {
+    marginTop: 6,
     color: colors.muted,
-    fontSize: 13,
-  },
-  placeholderCard: {
-    overflow: "hidden",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: "#d1d5db",
-    backgroundColor: colors.panel,
-    color: colors.inkSoft,
-    padding: 16,
-    fontSize: 14,
-  },
-  foodItem: {
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 5,
-  },
-  foodLogItem: {
-    backgroundColor: colors.softBlue,
-    borderColor: colors.blueSoft,
-  },
-  activityItem: {
-    backgroundColor: "#f7fdf9",
-    borderColor: "#bbf7d0",
-  },
-  entryType: {
-    alignSelf: "flex-start",
-    overflow: "hidden",
-    borderRadius: 999,
-    backgroundColor: "rgba(17,24,39,0.06)",
-    color: colors.inkSoft,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
     fontSize: 11,
-    fontWeight: "700",
-  },
-  foodName: {
-    color: colors.ink,
-    fontWeight: "600",
-  },
-  foodQty: {
-    color: colors.muted,
-    fontSize: 14,
-  },
-  foodMacros: {
-    color: colors.quiet,
-    fontSize: 13,
+    lineHeight: 15,
   },
 });

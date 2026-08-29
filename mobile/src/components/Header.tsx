@@ -17,11 +17,14 @@ const links = [
 
 const goalLabels: Record<string, string> = {
   muscle_gain: "Muscle Gain",
+  maintain_weight: "Maintain Weight",
   weight_loss: "Weight Loss",
-  skin_health: "Skin Health",
-  hair_growth: "Hair Growth",
-  energy_boost: "Energy Boost",
+  vitamin_focus: "Vitamins & Vitality",
   pcos: "PCOS / PCOD",
+  // legacy values
+  skin_health: "Vitamins & Vitality",
+  hair_growth: "Vitamins & Vitality",
+  energy_boost: "Vitamins & Vitality",
 };
 
 export function Header() {
@@ -29,7 +32,7 @@ export function Header() {
   const router = useRouter();
   const { user, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
-  const userGoal = user?.goal ? goalLabels[user.goal] ?? user.goal : "";
+  const userGoal = (user?.goals ?? []).map((goal) => goalLabels[goal] ?? goal).join(", ");
 
   const closeMenu = () => setMenuOpen(false);
   const handleSignOut = async () => {

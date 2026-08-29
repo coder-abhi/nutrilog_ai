@@ -11,10 +11,12 @@ import { API_BASE_URL } from "@/config/api";
 import { colors, shadow } from "@/styles/theme";
 import type { TrackerCard } from "@/types";
 import { toYMD } from "@/utils/date";
+import { calculateStreak } from "@/utils/streak";
 
 type EditDraft = {
   name: string;
   target_days_per_week: number;
+  target_value: string;
   description: string;
 };
 
@@ -27,39 +29,11 @@ function pastDays(count: number) {
   });
 }
 
-function weekKey(dateStr: string) {
-  const date = new Date(`${dateStr}T00:00:00`);
-  const day = (date.getDay() + 6) % 7;
-  date.setDate(date.getDate() - day);
-  return toYMD(date);
-}
-
-function calculateStreak(card: TrackerCard) {
-  const byDate = new Map(card.entries.map((entry) => [entry.date, entry.value]));
-  const weeklyCounts = new Map<string, number>();
-  card.entries.forEach((entry) => {
-    if (entry.value <= 0) return;
-    const key = weekKey(entry.date);
-    weeklyCounts.set(key, (weeklyCounts.get(key) ?? 0) + 1);
-  });
-
-  let streak = 0;
-  const today = new Date();
-  for (let i = 0; i < 90; i += 1) {
-    const date = new Date(today);
-    date.setDate(today.getDate() - i);
-    const dateStr = toYMD(date);
-    const weeklyDone = (weeklyCounts.get(weekKey(dateStr)) ?? 0) >= card.target_days_per_week;
-    if (weeklyDone || (byDate.get(dateStr) ?? 0) > 0) streak += 1;
-    else break;
-  }
-  return streak;
-}
-
 function makeEditDraft(card: TrackerCard): EditDraft {
   return {
     name: card.name,
     target_days_per_week: card.target_days_per_week,
+    target_value: card.target_value ? String(card.target_value) : "",
     description: card.description ?? "",
   };
 }
@@ -137,7 +111,7 @@ function TrackerContent() {
       const res = await fetch(`${API_BASE_URL}/tracker_entries`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ tracker_id: card.id, value }),
+        body: JSON.stringify({ tracker_id: card.id, value, date: toYMD(new Date()) }),
       });
       if (res.ok) {
         setNumericDrafts((current) => ({ ...current, [card.id]: "" }));
@@ -163,13 +137,21 @@ function TrackerContent() {
   const saveCard = async (card: TrackerCard) => {
     const draft = editDrafts[card.id];
     if (!draft?.name.trim()) return;
+    if (card.value_type === "numeric" && (!draft.target_value || Number(draft.target_value) <= 0)) {
+      setError("Enter a valid weekly target.");
+      return;
+    }
     setSavingId(card.id);
     setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/tracker_cards/${card.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify(draft),
+        body: JSON.stringify(
+          card.value_type === "numeric"
+            ? { name: draft.name, target_value: Number(draft.target_value), description: draft.description }
+            : { name: draft.name, target_days_per_week: draft.target_days_per_week, description: draft.description },
+        ),
       });
       if (res.status === 401) {
         await signOut();
@@ -259,6 +241,7 @@ function TrackerContent() {
                     {isEditing ? (
                       <EditForm
                         draft={draft}
+                        valueType={card.value_type}
                         saving={savingId === card.id}
                         onChange={(nextDraft) => setEditDrafts((current) => ({ ...current, [card.id]: nextDraft }))}
                         onCancel={() => setEditingId(null)}
@@ -266,7 +249,9 @@ function TrackerContent() {
                       />
                     ) : (
                       <>
-                        <Text style={styles.target}>{card.target_days_per_week} days per week target</Text>
+                        <Text style={styles.target}>
+                          {card.value_type === "numeric" ? `${card.target_value} per week target` : `${card.target_days_per_week} days per week target`}
+                        </Text>
                         <TrackerGraph card={card} />
                         {card.value_type === "boolean" ? (
                           <View style={styles.actions}>
@@ -368,12 +353,14 @@ function TrackerGraph({ card }: { card: TrackerCard }) {
 
 function EditForm({
   draft,
+  valueType,
   onChange,
   onCancel,
   onSave,
   saving,
 }: {
   draft: EditDraft;
+  valueType: "boolean" | "numeric";
   onChange: (draft: EditDraft) => void;
   onCancel: () => void;
   onSave: () => void;
@@ -382,16 +369,26 @@ function EditForm({
   return (
     <View style={styles.editForm}>
       <EditField label="Name" value={draft.name} onChangeText={(name) => onChange({ ...draft, name })} />
-      <View style={styles.editField}>
-        <Text style={styles.editLabel}>Weekly target</Text>
-        <View style={styles.daysRow}>
-          {[1, 2, 3, 4, 5, 6, 7].map((day) => (
-            <Pressable key={day} style={[styles.dayChip, draft.target_days_per_week === day && styles.dayChipActive]} onPress={() => onChange({ ...draft, target_days_per_week: day })}>
-              <Text style={[styles.dayChipText, draft.target_days_per_week === day && styles.dayChipTextActive]}>{day}</Text>
-            </Pressable>
-          ))}
+      {valueType === "numeric" ? (
+        <EditField
+          label="Weekly target"
+          value={draft.target_value}
+          onChangeText={(target_value) => onChange({ ...draft, target_value })}
+          placeholder="e.g. 50"
+          keyboardType="numeric"
+        />
+      ) : (
+        <View style={styles.editField}>
+          <Text style={styles.editLabel}>Weekly target</Text>
+          <View style={styles.daysRow}>
+            {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+              <Pressable key={day} style={[styles.dayChip, draft.target_days_per_week === day && styles.dayChipActive]} onPress={() => onChange({ ...draft, target_days_per_week: day })}>
+                <Text style={[styles.dayChipText, draft.target_days_per_week === day && styles.dayChipTextActive]}>{day}</Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
-      </View>
+      )}
       <EditField label="Description" value={draft.description} onChangeText={(description) => onChange({ ...draft, description })} multiline />
       <View style={styles.editActions}>
         <Pressable style={styles.editSecondary} onPress={onCancel}>

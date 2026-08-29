@@ -45,8 +45,8 @@ const GOALS = [
 ];
 
 type GoalSelectionProps = {
-  selectedGoal: GoalValue | null;
-  onGoalChange: (value: GoalValue | null) => void;
+  selectedGoals: GoalValue[];
+  onGoalChange: (values: GoalValue[]) => void;
   onWeightChange: (value: string) => void;
   onTargetWeightChange: (value: string) => void;
   onHeightChange: (value: string) => void;
@@ -56,7 +56,7 @@ type GoalSelectionProps = {
 };
 
 export default function GoalSelection({
-  selectedGoal,
+  selectedGoals,
   onGoalChange,
   onWeightChange,
   onTargetWeightChange,
@@ -66,21 +66,21 @@ export default function GoalSelection({
   currHeight,
 }: GoalSelectionProps) {
   const handleSelect = (value: GoalValue) => {
-    onGoalChange(selectedGoal === value ? null : value);
+    onGoalChange(selectedGoals.includes(value) ? selectedGoals.filter((goal) => goal !== value) : [...selectedGoals, value]);
   };
 
   return (
     <div className={styles.goalPanel}>
       <h2 className={styles.heading}>
-        Choose your goal
+        Choose your goals
       </h2>
       <p className={styles.subheading}>
-        Optional. Add the details you know now, or skip and fill them later.
+        Optional. Pick as many as apply, or skip and fill them later.
       </p>
 
       <div className={styles.goalGrid}>
         {GOALS.map((goal) => {
-          const isActive = selectedGoal === goal.value;
+          const isActive = selectedGoals.includes(goal.value as GoalValue);
 
           return (
             <button
@@ -136,7 +136,7 @@ export default function GoalSelection({
             </span>
           </label>
 
-        {selectedGoal === "weight_loss" && (
+        {selectedGoals.includes("weight_loss") && (
           <label className={styles.field}>
             <span className={styles.fieldLabel}>
               Target weight <span>optional</span>

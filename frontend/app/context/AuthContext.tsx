@@ -12,7 +12,7 @@ export type User = {
   height_cm: number;
   gender: string;
   activity_level: string;
-  goal:string;
+  goals: string[];
 };
 
 type SignUpPayload = User & {

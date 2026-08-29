@@ -2,6 +2,7 @@ import base64
 from datetime import datetime, timedelta
 import hashlib
 import hmac
+import json
 import os
 from pathlib import Path
 import secrets
@@ -88,6 +89,7 @@ class UserDB(Base):
     activity_level = Column(String, nullable=False)  # sedentary | low | moderate | high | very_high
     created_at = Column(DateTime, default=datetime.utcnow)
     goal=Column[str](String,nullable=True)
+    goals = Column(Text, nullable=True)  # JSON-encoded list[str]; supersedes `goal`
 
 
 class WeightEntryDB(Base):
@@ -106,7 +108,8 @@ class TrackerCardDB(Base):
     user_id = Column(String, nullable=False, index=True)
     name = Column(String, nullable=False)
     value_type = Column(String, nullable=False)  # boolean | numeric
-    target_days_per_week = Column(Integer, nullable=False, default=7)
+    target_days_per_week = Column(Integer, nullable=False, default=7)  # boolean trackers: days/week target
+    target_value = Column(Float, nullable=True)  # numeric trackers: total quantity/week target
     description = Column(Text, nullable=True)
     is_visible = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
@@ -184,6 +187,22 @@ class FoodDB(Base):
 # -----------------------------
 
 
+def encode_goals(goals: list[str] | None) -> str | None:
+    if not goals:
+        return None
+    return json.dumps(goals)
+
+
+def decode_goals(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
 def create_user(session,dataObj:SignUpInput):
     """Create a new user. Raises if username exists."""
     if get_user_by_username(session, dataObj.username) is not None:
@@ -196,7 +215,7 @@ def create_user(session,dataObj:SignUpInput):
         height_cm=dataObj.height_cm,
         gender=dataObj.gender,
         activity_level=dataObj.activity_level,
-        goal=dataObj.goal
+        goals=encode_goals(dataObj.goals),
     )
     session.add(user)
     try:
@@ -226,7 +245,7 @@ def get_user_by_username_and_password(session, username: str, password: str) -> 
     return user
 
 
-def update_user_profile(session, username: str, *, weight_kg: float, target_weight_kg: float | None, height_cm: float, gender: str, activity_level: str, goal: str | None):
+def update_user_profile(session, username: str, *, weight_kg: float, target_weight_kg: float | None, height_cm: float, gender: str, activity_level: str, goals: list[str] | None):
     user = get_user_by_username(session, username)
     if user is None:
         return None
@@ -235,7 +254,7 @@ def update_user_profile(session, username: str, *, weight_kg: float, target_weig
     user.height_cm = height_cm
     user.gender = gender
     user.activity_level = activity_level
-    user.goal = goal
+    user.goals = encode_goals(goals)
     session.commit()
     session.refresh(user)
     return user
@@ -335,12 +354,13 @@ def get_weight_entries(session, user_id: str, limit: int = 100):
     )
 
 
-def create_tracker_card(session, user_id: str, name: str, value_type: str, target_days_per_week: int, description: str | None = None):
+def create_tracker_card(session, user_id: str, name: str, value_type: str, target_days_per_week: int, target_value: float | None = None, description: str | None = None):
     card = TrackerCardDB(
         user_id=user_id,
         name=name.strip(),
         value_type=value_type,
         target_days_per_week=target_days_per_week,
+        target_value=target_value,
         description=description,
         is_visible=True,
     )
@@ -366,12 +386,13 @@ def get_tracker_card(session, user_id: str, tracker_id: str):
     )
 
 
-def update_tracker_card(session, user_id: str, tracker_id: str, name: str, target_days_per_week: int, description: str | None = None):
+def update_tracker_card(session, user_id: str, tracker_id: str, name: str, target_days_per_week: int, target_value: float | None = None, description: str | None = None):
     card = get_tracker_card(session, user_id, tracker_id)
     if card is None:
         return None
     card.name = name.strip()
     card.target_days_per_week = target_days_per_week
+    card.target_value = target_value
     card.description = description
     session.commit()
     return card
@@ -448,6 +469,8 @@ def _add_column_if_missing(table_name: str, column_name: str, definition: str):
 
 _add_column_if_missing("users", "target_weight_kg", "REAL")
 _add_column_if_missing("health_logs", "insulin_curve", "TEXT")
+_add_column_if_missing("users", "goals", "TEXT")
+_add_column_if_missing("tracker_cards", "target_value", "REAL")
 
 
 def get_db():

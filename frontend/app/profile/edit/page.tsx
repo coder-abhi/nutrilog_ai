@@ -22,7 +22,6 @@ const GENDER_OPTIONS = [
 ];
 
 const GOAL_OPTIONS = [
-  { value: "", label: "No goal selected" },
   { value: "muscle_gain", label: "Muscle Gain" },
   { value: "weight_loss", label: "Weight Loss" },
   { value: "skin_health", label: "Skin Health" },
@@ -39,12 +38,16 @@ function EditProfileContent() {
   const [heightCm, setHeightCm] = useState(() => String(user?.height_cm ?? ""));
   const [gender, setGender] = useState(() => user?.gender ?? "male");
   const [activityLevel, setActivityLevel] = useState(() => user?.activity_level ?? "moderate");
-  const [goal, setGoal] = useState(() => user?.goal ?? "");
+  const [goals, setGoals] = useState<string[]>(() => user?.goals ?? []);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const showTargetWeight = goal === "weight_loss" || targetWeightKg.trim() !== "";
+  const toggleGoal = (value: string) => {
+    setGoals((current) => (current.includes(value) ? current.filter((item) => item !== value) : [...current, value]));
+  };
+
+  const showTargetWeight = goals.includes("weight_loss") || targetWeightKg.trim() !== "";
   const profilePreview = useMemo(() => {
     const pieces = [
       weightKg ? `${weightKg} kg` : null,
@@ -83,7 +86,7 @@ function EditProfileContent() {
       height_cm: parsedHeight,
       gender,
       activity_level: activityLevel,
-      goal,
+      goals,
     });
     setSubmitting(false);
 
@@ -136,16 +139,21 @@ function EditProfileContent() {
               </div>
             </label>
 
-            <label className={styles.field}>
-              <span>Goal</span>
-              <select value={goal} onChange={(event) => setGoal(event.target.value)}>
+            <fieldset className={styles.field}>
+              <legend>Goals</legend>
+              <div className={styles.checkboxGroup}>
                 {GOAL_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
+                  <label key={option.value} className={styles.checkboxOption}>
+                    <input
+                      type="checkbox"
+                      checked={goals.includes(option.value)}
+                      onChange={() => toggleGoal(option.value)}
+                    />
+                    <span>{option.label}</span>
+                  </label>
                 ))}
-              </select>
-            </label>
+              </div>
+            </fieldset>
 
             {showTargetWeight && (
               <label className={styles.field}>

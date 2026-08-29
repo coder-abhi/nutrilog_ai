@@ -15,6 +15,7 @@ function NewTrackerContent() {
   const [name, setName] = useState("");
   const [valueType, setValueType] = useState<"boolean" | "numeric">("boolean");
   const [targetDays, setTargetDays] = useState(7);
+  const [targetValue, setTargetValue] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -25,18 +26,21 @@ function NewTrackerContent() {
       setError("Name is required.");
       return;
     }
+    if (valueType === "numeric" && (!targetValue || Number(targetValue) <= 0)) {
+      setError("Enter a valid weekly target.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/tracker_cards`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({
-          name,
-          value_type: valueType,
-          target_days_per_week: targetDays,
-          description,
-        }),
+        body: JSON.stringify(
+          valueType === "numeric"
+            ? { name, value_type: valueType, target_value: Number(targetValue), description }
+            : { name, value_type: valueType, target_days_per_week: targetDays, description },
+        ),
       });
       const data = await res.json();
       if (res.status === 401) {
@@ -92,16 +96,30 @@ function NewTrackerContent() {
             </label>
           </fieldset>
 
-          <label className={styles.field}>
-            <span>Weekly target</span>
-            <select value={targetDays} onChange={(event) => setTargetDays(Number(event.target.value))}>
-              {[1, 2, 3, 4, 5, 6, 7].map((day) => (
-                <option key={day} value={day}>
-                  {day} {day === 1 ? "day" : "days"} per week
-                </option>
-              ))}
-            </select>
-          </label>
+          {valueType === "numeric" ? (
+            <label className={styles.field}>
+              <span>Weekly target</span>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                placeholder="e.g. 50"
+                value={targetValue}
+                onChange={(event) => setTargetValue(event.target.value)}
+              />
+            </label>
+          ) : (
+            <label className={styles.field}>
+              <span>Weekly target</span>
+              <select value={targetDays} onChange={(event) => setTargetDays(Number(event.target.value))}>
+                {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+                  <option key={day} value={day}>
+                    {day} {day === 1 ? "day" : "days"} per week
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <label className={styles.field}>
             <span>Description</span>

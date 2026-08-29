@@ -41,13 +41,17 @@ class ActivityInput(BaseModel):
 class TrackerCardInput(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     value_type: Literal["boolean", "numeric"]
-    target_days_per_week: int = Field(ge=1, le=7)
+    # Boolean trackers target a number of days/week; numeric trackers target a total
+    # quantity/week (e.g. 50 pushups), so only one of these applies depending on value_type.
+    target_days_per_week: int | None = Field(default=None, ge=1, le=7)
+    target_value: float | None = Field(default=None, gt=0, le=1_000_000)
     description: str | None = Field(default=None, max_length=500)
 
 
 class TrackerCardUpdateInput(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    target_days_per_week: int = Field(ge=1, le=7)
+    target_days_per_week: int | None = Field(default=None, ge=1, le=7)
+    target_value: float | None = Field(default=None, gt=0, le=1_000_000)
     description: str | None = Field(default=None, max_length=500)
 
 
@@ -57,7 +61,9 @@ class TrackerVisibilityInput(BaseModel):
 
 class TrackerEntryInput(BaseModel):
     tracker_id: str
-    value: float = Field(ge=0, le=1_000_000_000)
+    # Negative values are allowed for numeric trackers, where they are applied as a
+    # decrement against the existing entry for that date (see add_tracker_entry).
+    value: float = Field(ge=-1_000_000_000, le=1_000_000_000)
     date: str | None = Field(default=None, max_length=10)
 
 
@@ -74,7 +80,7 @@ class SignUpInput(BaseModel):
     height_cm: float = Field(ge=30, le=300)
     gender: Literal["male", "female", "other"]
     activity_level: Literal["sedentary", "low", "moderate", "high", "very_high"]
-    goal: str | None = Field(default=None, max_length=100)
+    goals: list[str] = Field(default_factory=list, max_length=10)
 
 
 class ProfileUpdateInput(BaseModel):
@@ -83,7 +89,7 @@ class ProfileUpdateInput(BaseModel):
     height_cm: float = Field(ge=30, le=300)
     gender: Literal["male", "female", "other"]
     activity_level: Literal["sedentary", "low", "moderate", "high", "very_high"]
-    goal: str | None = Field(default=None, max_length=100)
+    goals: list[str] = Field(default_factory=list, max_length=10)
 
 
 class WeightEntryInput(BaseModel):

@@ -20,6 +20,7 @@ type TrackerCard = {
   name: string;
   value_type: "boolean" | "numeric";
   target_days_per_week: number;
+  target_value: number | null;
   description: string;
   is_visible: boolean;
   entries: TrackerEntry[];
@@ -28,6 +29,7 @@ type TrackerCard = {
 type EditDraft = {
   name: string;
   target_days_per_week: number;
+  target_value: string;
   description: string;
 };
 
@@ -57,13 +59,15 @@ function weekKey(dateStr: string) {
 function calculateStreak(card: TrackerCard) {
   const byDate = new Map(card.entries.map((entry) => [entry.date, entry.value]));
   const completed = (date: string) => (byDate.get(date) ?? 0) > 0;
-  const weeklyCounts = new Map<string, number>();
-
+  // Boolean trackers target a number of days/week; numeric trackers target a total
+  // quantity/week (e.g. 50 pushups). Both reduce to "does this week's total reach the target",
+  // since boolean entries are always 0/1.
+  const weeklyTotals = new Map<string, number>();
   card.entries.forEach((entry) => {
-    if (entry.value <= 0) return;
     const key = weekKey(entry.date);
-    weeklyCounts.set(key, (weeklyCounts.get(key) ?? 0) + 1);
+    weeklyTotals.set(key, (weeklyTotals.get(key) ?? 0) + entry.value);
   });
+  const target = card.value_type === "numeric" ? card.target_value ?? 0 : card.target_days_per_week;
 
   let streak = 0;
   const today = new Date();
@@ -71,7 +75,7 @@ function calculateStreak(card: TrackerCard) {
     const date = new Date(today);
     date.setDate(today.getDate() - i);
     const dateStr = toYMD(date);
-    const weeklyDone = (weeklyCounts.get(weekKey(dateStr)) ?? 0) >= card.target_days_per_week;
+    const weeklyDone = target > 0 && (weeklyTotals.get(weekKey(dateStr)) ?? 0) >= target;
     if (weeklyDone || completed(dateStr)) {
       streak += 1;
     } else {
@@ -147,18 +151,21 @@ function makeEditDraft(card: TrackerCard): EditDraft {
   return {
     name: card.name,
     target_days_per_week: card.target_days_per_week,
+    target_value: card.target_value ? String(card.target_value) : "",
     description: card.description ?? "",
   };
 }
 
 function CardEditForm({
   draft,
+  valueType,
   onChange,
   onCancel,
   onSave,
   saving,
 }: {
   draft: EditDraft;
+  valueType: "boolean" | "numeric";
   onChange: (draft: EditDraft) => void;
   onCancel: () => void;
   onSave: () => void;
@@ -170,19 +177,33 @@ function CardEditForm({
         <span>Name</span>
         <input value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} />
       </label>
-      <label>
-        <span>Weekly target</span>
-        <select
-          value={draft.target_days_per_week}
-          onChange={(event) => onChange({ ...draft, target_days_per_week: Number(event.target.value) })}
-        >
-          {[1, 2, 3, 4, 5, 6, 7].map((day) => (
-            <option key={day} value={day}>
-              {day} {day === 1 ? "day" : "days"} per week
-            </option>
-          ))}
-        </select>
-      </label>
+      {valueType === "numeric" ? (
+        <label>
+          <span>Weekly target</span>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            placeholder="e.g. 50"
+            value={draft.target_value}
+            onChange={(event) => onChange({ ...draft, target_value: event.target.value })}
+          />
+        </label>
+      ) : (
+        <label>
+          <span>Weekly target</span>
+          <select
+            value={draft.target_days_per_week}
+            onChange={(event) => onChange({ ...draft, target_days_per_week: Number(event.target.value) })}
+          >
+            {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+              <option key={day} value={day}>
+                {day} {day === 1 ? "day" : "days"} per week
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label>
         <span>Description</span>
         <textarea
@@ -268,7 +289,7 @@ function TrackerContent() {
       const res = await fetch(`${API_BASE_URL}/tracker_entries`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ tracker_id: card.id, value }),
+        body: JSON.stringify({ tracker_id: card.id, value, date: toYMD(new Date()) }),
       });
       if (res.status === 401) {
         signOut();
@@ -296,17 +317,21 @@ function TrackerContent() {
   const saveCard = async (card: TrackerCard) => {
     const draft = editDrafts[card.id];
     if (!draft?.name.trim()) return;
+    if (card.value_type === "numeric" && (!draft.target_value || Number(draft.target_value) <= 0)) {
+      setError("Enter a valid weekly target.");
+      return;
+    }
     setSavingId(card.id);
     setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/tracker_cards/${card.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({
-          name: draft.name,
-          target_days_per_week: draft.target_days_per_week,
-          description: draft.description,
-        }),
+        body: JSON.stringify(
+          card.value_type === "numeric"
+            ? { name: draft.name, target_value: Number(draft.target_value), description: draft.description }
+            : { name: draft.name, target_days_per_week: draft.target_days_per_week, description: draft.description },
+        ),
       });
       if (res.status === 401) {
         signOut();
@@ -396,6 +421,7 @@ function TrackerContent() {
                     {isEditing ? (
                       <CardEditForm
                         draft={draft}
+                        valueType={card.value_type}
                         onChange={(nextDraft) => setEditDrafts((current) => ({ ...current, [card.id]: nextDraft }))}
                         onCancel={() => setEditingId(null)}
                         onSave={() => saveCard(card)}
@@ -403,7 +429,9 @@ function TrackerContent() {
                       />
                     ) : (
                       <>
-                        <p className={styles.target}>{card.target_days_per_week} days per week target</p>
+                        <p className={styles.target}>
+                          {card.value_type === "numeric" ? `${card.target_value} per week target` : `${card.target_days_per_week} days per week target`}
+                        </p>
                         <TrackerGraph card={card} />
                         {card.value_type === "boolean" ? (
                           <div className={styles.actions}>

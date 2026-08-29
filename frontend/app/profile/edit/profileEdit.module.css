@@ -69,6 +69,39 @@
   font: inherit;
 }
 
+fieldset.field {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+fieldset.field legend {
+  padding: 0;
+}
+
+.checkboxGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.checkboxOption {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.checkboxOption input {
+  width: auto;
+  min-height: 0;
+}
+
 .inputWithUnit {
   position: relative;
 }

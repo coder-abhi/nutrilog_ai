@@ -5,7 +5,7 @@ export type User = {
   height_cm: number;
   gender: string;
   activity_level: string;
-  goal: string;
+  goals: string[];
 };
 
 export type SummaryData = {
@@ -48,6 +48,7 @@ export type TrackerCard = {
   name: string;
   value_type: "boolean" | "numeric";
   target_days_per_week: number;
+  target_value: number | null;
   description: string;
   is_visible: boolean;
   entries: TrackerEntry[];

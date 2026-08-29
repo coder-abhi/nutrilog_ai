@@ -9,14 +9,12 @@ import { GradientScreen } from "@/components/Screen";
 import { colors, shadow } from "@/styles/theme";
 
 const activityOptions = ["sedentary", "low", "moderate", "high", "very_high"];
-const genderOptions = ["male", "female", "other"];
+const genderOptions = ["male", "female"];
 const goalOptions = [
-  { value: "", label: "No goal selected" },
   { value: "muscle_gain", label: "Muscle Gain" },
+  { value: "maintain_weight", label: "Maintain Weight" },
   { value: "weight_loss", label: "Weight Loss" },
-  { value: "skin_health", label: "Skin Health" },
-  { value: "hair_growth", label: "Hair Growth" },
-  { value: "energy_boost", label: "Energy Boost" },
+  { value: "vitamin_focus", label: "Vitamins & Vitality" },
   { value: "pcos", label: "PCOS / PCOD" },
 ];
 
@@ -36,7 +34,11 @@ function EditProfileContent() {
   const [heightCm, setHeightCm] = useState(() => String(user?.height_cm ?? ""));
   const [gender, setGender] = useState(() => user?.gender ?? "male");
   const [activityLevel, setActivityLevel] = useState(() => user?.activity_level ?? "moderate");
-  const [goal, setGoal] = useState(() => user?.goal ?? "");
+  const [goals, setGoals] = useState<string[]>(() => user?.goals ?? []);
+
+  const toggleGoal = (value: string) => {
+    setGoals((current) => (current.includes(value) ? current.filter((item) => item !== value) : [...current, value]));
+  };
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -72,7 +74,7 @@ function EditProfileContent() {
       height_cm: parsedHeight,
       gender,
       activity_level: activityLevel,
-      goal,
+      goals,
     });
     setSubmitting(false);
 
@@ -95,8 +97,8 @@ function EditProfileContent() {
           <View style={styles.form}>
             <Field label="Current weight" value={weightKg} onChangeText={setWeightKg} suffix="kg" keyboardType="decimal-pad" />
             <Field label="Height" value={heightCm} onChangeText={setHeightCm} suffix="cm" keyboardType="decimal-pad" />
-            <ChoiceRow label="Goal" value={goal} options={goalOptions.map((item) => item.value)} labels={Object.fromEntries(goalOptions.map((item) => [item.value, item.label]))} onChange={setGoal} />
-            {(goal === "weight_loss" || targetWeightKg.trim()) && (
+            <MultiChoiceRow label="Goals" value={goals} options={goalOptions.map((item) => item.value)} labels={Object.fromEntries(goalOptions.map((item) => [item.value, item.label]))} onToggle={toggleGoal} />
+            {(goals.includes("weight_loss") || targetWeightKg.trim()) && (
               <Field label="Target weight" value={targetWeightKg} onChangeText={setTargetWeightKg} suffix="kg" keyboardType="decimal-pad" />
             )}
             <ChoiceRow label="Gender" value={gender} options={genderOptions} onChange={setGender} />
@@ -134,6 +136,36 @@ function Field({
       <View style={styles.inputWrap}>
         <TextInput {...props} style={styles.input} placeholderTextColor="#9ca3af" />
         {!!suffix && <Text style={styles.unit}>{suffix}</Text>}
+      </View>
+    </View>
+  );
+}
+
+function MultiChoiceRow({
+  label,
+  value,
+  options,
+  labels,
+  onToggle,
+}: {
+  label: string;
+  value: string[];
+  options: string[];
+  labels?: Record<string, string>;
+  onToggle: (value: string) => void;
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={styles.choiceWrap}>
+        {options.map((option) => {
+          const active = value.includes(option);
+          return (
+            <Pressable key={option} style={[styles.choice, active && styles.choiceActive]} onPress={() => onToggle(option)}>
+              <Text style={[styles.choiceText, active && styles.choiceTextActive]}>{labels?.[option] ?? option.replace("_", " ")}</Text>
+            </Pressable>
+          );
+        })}
       </View>
     </View>
   );

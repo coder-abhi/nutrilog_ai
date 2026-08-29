@@ -5,17 +5,23 @@ import { useAuth } from "@/auth/AuthContext";
 import { GradientScreen } from "@/components/Screen";
 import { colors, shadow } from "@/styles/theme";
 
-type GoalValue = "muscle_gain" | "weight_loss" | "skin_health" | "hair_growth" | "energy_boost" | "pcos";
+type GoalValue = "muscle_gain" | "maintain_weight" | "weight_loss" | "vitamin_focus" | "pcos";
 
 const activityOptions = ["sedentary", "low", "moderate", "high", "very_high"];
-const genderOptions = ["male", "female", "other"];
-const goals: { value: GoalValue; title: string; description: string }[] = [
-  { value: "muscle_gain", title: "Muscle Gain", description: "Track protein and strength nutrients" },
-  { value: "weight_loss", title: "Weight Loss", description: "Track calories and fat burn" },
-  { value: "skin_health", title: "Skin Health", description: "Track Vitamin C, E and hydration" },
-  { value: "hair_growth", title: "Hair Growth", description: "Track biotin, B12 and iron" },
-  { value: "energy_boost", title: "Energy Boost", description: "Track iron, B vitamins and complex carbs" },
-  { value: "pcos", title: "PCOS / PCOD", description: "Track blood sugar and hormone balance" },
+const activityHints: Record<string, string> = {
+  sedentary: "Barely any walking (under ~1 km/day), no sport or gym.",
+  low: "Light week — a sport, walk or workout roughly once a week.",
+  moderate: "Gym, sport or a long walk ~3x a week, or ~8k steps most days.",
+  high: "Training hard 5-6x a week, or a physically demanding job.",
+  very_high: "Intense training most days or heavy manual labour.",
+};
+const genderOptions = ["male", "female"];
+const goals: { value: GoalValue; title: string }[] = [
+  { value: "muscle_gain", title: "Muscle Gain" },
+  { value: "maintain_weight", title: "Maintain Weight" },
+  { value: "weight_loss", title: "Weight Loss" },
+  { value: "vitamin_focus", title: "Vitamins & Vitality" },
+  { value: "pcos", title: "PCOS / PCOD" },
 ];
 
 export function AuthForm() {
@@ -26,7 +32,7 @@ export function AuthForm() {
   const [password, setPassword] = useState("");
   const [gender, setGender] = useState("male");
   const [activityLevel, setActivityLevel] = useState("moderate");
-  const [selectedGoal, setSelectedGoal] = useState<GoalValue | null>(null);
+  const [selectedGoals, setSelectedGoals] = useState<GoalValue[]>([]);
   const [weightKg, setWeightKg] = useState("");
   const [targetWeightKg, setTargetWeightKg] = useState("");
   const [heightCm, setHeightCm] = useState("");
@@ -60,7 +66,7 @@ export function AuthForm() {
       setError("Enter a valid height (cm), or leave it empty.");
       return;
     }
-    if (selectedGoal === "weight_loss" && targetWeightKg && (!Number.isFinite(parsedTargetWeight) || parsedTargetWeight <= 0)) {
+    if (selectedGoals.includes("weight_loss") && targetWeightKg && (!Number.isFinite(parsedTargetWeight) || parsedTargetWeight <= 0)) {
       setError("Enter a valid target weight (kg), or leave it empty.");
       return;
     }
@@ -70,11 +76,11 @@ export function AuthForm() {
           username: username.trim(),
           password,
           weight_kg: weightKg ? parsedWeight : 70,
-          target_weight_kg: selectedGoal === "weight_loss" && targetWeightKg ? parsedTargetWeight : null,
+          target_weight_kg: selectedGoals.includes("weight_loss") && targetWeightKg ? parsedTargetWeight : null,
           height_cm: heightCm ? parsedHeight : 170,
           gender,
           activity_level: activityLevel,
-          goal: selectedGoal ?? "",
+          goals: selectedGoals,
         })
       : await signIn(username.trim(), password);
     setSubmitting(false);
@@ -98,25 +104,34 @@ export function AuthForm() {
           {isSignUp && step === 1 && (
             <>
               <ChoiceRow label="Gender" value={gender} options={genderOptions} onChange={setGender} />
-              <ChoiceRow label="Activity level" value={activityLevel} options={activityOptions} onChange={setActivityLevel} />
+              <ChoiceRow
+                label="Activity level"
+                value={activityLevel}
+                options={activityOptions}
+                onChange={setActivityLevel}
+                hint={activityHints[activityLevel]}
+              />
             </>
           )}
 
           {isSignUp && step === 2 && (
             <View style={styles.goalPanel}>
-              <Text style={styles.heading}>Choose your goal</Text>
-              <Text style={styles.goalSub}>Optional. Add the details you know now, or skip and fill them later.</Text>
+              <Text style={styles.heading}>Choose your goals</Text>
+              <Text style={styles.goalSub}>Optional. Pick as many as apply, or skip and fill them later.</Text>
               <View style={styles.goalGrid}>
                 {goals.map((goal) => {
-                  const active = selectedGoal === goal.value;
+                  const active = selectedGoals.includes(goal.value);
                   return (
                     <Pressable
                       key={goal.value}
                       style={[styles.goalCard, active && styles.goalCardActive]}
-                      onPress={() => setSelectedGoal(active ? null : goal.value)}
+                      onPress={() =>
+                        setSelectedGoals((current) =>
+                          active ? current.filter((value) => value !== goal.value) : [...current, goal.value],
+                        )
+                      }
                     >
                       <Text style={styles.goalTitle}>{goal.title}</Text>
-                      <Text style={styles.goalDescription}>{goal.description}</Text>
                       {active && <View style={styles.activeDot} />}
                     </Pressable>
                   );
@@ -124,8 +139,8 @@ export function AuthForm() {
               </View>
               <View style={styles.bodyPanel}>
                 <Field label="Current weight optional" value={weightKg} onChangeText={setWeightKg} placeholder="e.g. 72" suffix="kg" keyboardType="decimal-pad" />
-                <Field label="Height optional" value={heightCm} onChangeText={setHeightCm} placeholder="e.g. 175" suffix="cm" keyboardType="decimal-pad" />
-                {selectedGoal === "weight_loss" && (
+                <HeightField valueCm={heightCm} onChangeCm={setHeightCm} />
+                {selectedGoals.includes("weight_loss") && (
                   <Field label="Target weight optional" value={targetWeightKg} onChangeText={setTargetWeightKg} placeholder="e.g. 68" suffix="kg" keyboardType="decimal-pad" />
                 )}
               </View>
@@ -155,7 +170,7 @@ export function AuthForm() {
               setMode(isSignUp ? "signin" : "signup");
               setStep(1);
               setError("");
-              setSelectedGoal(null);
+              setSelectedGoals([]);
             }}
           >
             <Text style={styles.switchText}>{isSignUp ? "Already have an account? Sign in" : "No account? Sign up"}</Text>
@@ -185,7 +200,105 @@ function Field({
   );
 }
 
-function ChoiceRow({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
+function HeightField({ valueCm, onChangeCm }: { valueCm: string; onChangeCm: (cm: string) => void }) {
+  const [unit, setUnit] = useState<"cm" | "ft">("cm");
+  const [feet, setFeet] = useState("");
+  const [inches, setInches] = useState("");
+
+  const switchUnit = (next: "cm" | "ft") => {
+    if (next === unit) return;
+    if (next === "ft") {
+      const cm = Number(valueCm);
+      if (Number.isFinite(cm) && cm > 0) {
+        const totalInches = cm / 2.54;
+        setFeet(String(Math.floor(totalInches / 12)));
+        setInches(String(Math.round(totalInches % 12)));
+      }
+    }
+    setUnit(next);
+  };
+
+  const applyImperial = (nextFeet: string, nextInches: string) => {
+    setFeet(nextFeet);
+    setInches(nextInches);
+    const f = Number(nextFeet) || 0;
+    const i = Number(nextInches) || 0;
+    onChangeCm(f > 0 || i > 0 ? String(Math.round((f * 12 + i) * 2.54)) : "");
+  };
+
+  return (
+    <View style={styles.field}>
+      <View style={styles.heightHeader}>
+        <Text style={styles.label}>Height optional</Text>
+        <View style={styles.unitToggle}>
+          {(["cm", "ft"] as const).map((option) => (
+            <Pressable
+              key={option}
+              style={[styles.unitOption, unit === option && styles.unitOptionActive]}
+              onPress={() => switchUnit(option)}
+            >
+              <Text style={[styles.unitOptionText, unit === option && styles.unitOptionTextActive]}>
+                {option === "cm" ? "cm" : "ft / in"}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+      {unit === "cm" ? (
+        <View style={styles.inputWrap}>
+          <TextInput
+            value={valueCm}
+            onChangeText={onChangeCm}
+            placeholder="e.g. 175"
+            placeholderTextColor="#9ca3af"
+            keyboardType="decimal-pad"
+            style={styles.input}
+          />
+          <Text style={styles.unit}>cm</Text>
+        </View>
+      ) : (
+        <View style={styles.heightImperialRow}>
+          <View style={[styles.inputWrap, styles.heightImperialItem]}>
+            <TextInput
+              value={feet}
+              onChangeText={(text) => applyImperial(text, inches)}
+              placeholder="5"
+              placeholderTextColor="#9ca3af"
+              keyboardType="number-pad"
+              style={styles.input}
+            />
+            <Text style={styles.unit}>ft</Text>
+          </View>
+          <View style={[styles.inputWrap, styles.heightImperialItem]}>
+            <TextInput
+              value={inches}
+              onChangeText={(text) => applyImperial(feet, text)}
+              placeholder="9"
+              placeholderTextColor="#9ca3af"
+              keyboardType="number-pad"
+              style={styles.input}
+            />
+            <Text style={styles.unit}>in</Text>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+function ChoiceRow({
+  label,
+  value,
+  options,
+  onChange,
+  hint,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  hint?: string;
+}) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
@@ -199,6 +312,7 @@ function ChoiceRow({ label, value, options, onChange }: { label: string; value: 
           );
         })}
       </View>
+      {!!hint && <Text style={styles.choiceHint}>{hint}</Text>}
     </View>
   );
 }
@@ -237,6 +351,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
     textTransform: "capitalize",
+  },
+  heightHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  unitToggle: {
+    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  unitOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  unitOptionActive: {
+    backgroundColor: colors.ink,
+  },
+  unitOptionText: {
+    color: colors.inkSoft,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  unitOptionTextActive: {
+    color: colors.panel,
+  },
+  heightImperialRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  heightImperialItem: {
+    flex: 1,
   },
   inputWrap: {
     minHeight: 45,
@@ -280,6 +428,12 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontSize: 13,
   },
+  choiceHint: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 2,
+  },
   choiceTextActive: {
     color: colors.panel,
   },
@@ -300,11 +454,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   goalCard: {
-    minHeight: 86,
+    minHeight: 52,
     borderWidth: 1,
     borderColor: colors.line,
     borderRadius: 14,
-    padding: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    justifyContent: "center",
     backgroundColor: colors.panel,
   },
   goalCardActive: {
@@ -324,12 +480,6 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontWeight: "700",
     fontSize: 14,
-  },
-  goalDescription: {
-    color: colors.muted,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 5,
   },
   bodyPanel: {
     gap: 10,
