@@ -16,8 +16,8 @@ import type { SummaryData } from "@/types";
 import { ApiError } from "@/utils/apiClient";
 import { getCached, setCached } from "@/utils/cache";
 import { normalizeToPercent } from "@/utils/chart";
-import { PASSIVE_CALORIE_CACHE_KEY, dashboardSummaryCacheKey } from "@/utils/cacheKeys";
-import { formatDisplayDate, formatHour, fromDisplayMinutes, toDisplayMinutes, toYMD } from "@/utils/date";
+import { INSULIN_CURVES_CACHE_KEY, PASSIVE_CALORIE_CACHE_KEY, dashboardSummaryCacheKey } from "@/utils/cacheKeys";
+import { formatDisplayDate, toYMD } from "@/utils/date";
 
 type DashboardRange = "today" | "week" | "month";
 type InsulinCurve = { timestamp: string | null; points: { minute: number; value: number }[] };
@@ -53,10 +53,9 @@ function DashboardContent() {
   const fetchSummaryForRange = useCallback(
     async (date: string, days: number) => {
       if (!user?.username) return null;
-      return authedFetch<{ summary: SummaryData; insulin_curves: InsulinCurve[] }>(
-        `/today_summary?date=${date}&days=${days}`,
-        { fallbackErrorMessage: "Could not load dashboard data." },
-      );
+      return authedFetch<{ summary: SummaryData }>(`/today_summary?date=${date}&days=${days}`, {
+        fallbackErrorMessage: "Could not load dashboard data.",
+      });
     },
     [authedFetch, user?.username],
   );
@@ -67,12 +66,10 @@ function DashboardContent() {
       const result = await fetchSummaryForRange(selectedDate, selectedRangeDays);
       if (!result) return;
       setSummaryData({ ...emptySummary, ...result.summary });
-      setInsulinCurves(result.insulin_curves ?? []);
-      setCached(dashboardSummaryCacheKey(selectedDate, selectedRangeDays), result);
+      setCached(dashboardSummaryCacheKey(selectedDate, selectedRangeDays), result.summary);
     } catch (err) {
       if (err instanceof SignedOutError) return;
       setSummaryData(emptySummary);
-      setInsulinCurves([]);
     }
   }, [fetchSummaryForRange, selectedDate, selectedRangeDays, user?.username]);
 
@@ -88,18 +85,33 @@ function DashboardContent() {
     }
   }, [authedFetch, user?.username]);
 
+  // The insulin graph always shows a rolling last-24-hours window, independent of the
+  // today/week/month range picker above. Fetching 2 calendar days (today + yesterday)
+  // guarantees full 24h coverage even right after midnight, when "today" alone would miss
+  // most of the window.
+  const fetchInsulinCurves = useCallback(async () => {
+    if (!user?.username) return;
+    try {
+      const result = await authedFetch<{ insulin_curves: InsulinCurve[] }>(
+        `/today_summary?date=${toYMD(new Date())}&days=2`,
+        { fallbackErrorMessage: "Could not load insulin data." },
+      );
+      const curves = result?.insulin_curves ?? [];
+      setInsulinCurves(curves);
+      setCached(INSULIN_CURVES_CACHE_KEY, curves);
+    } catch (err) {
+      if (err instanceof SignedOutError) return;
+      setInsulinCurves([]);
+    }
+  }, [authedFetch, user?.username]);
+
   // Paint the last cached response immediately (returning users see data with no delay,
   // even if the backend is cold-starting), then refresh from the network in the background.
   useEffect(() => {
     let active = true;
     (async () => {
-      const cached = await getCached<{ summary: SummaryData; insulin_curves: InsulinCurve[] }>(
-        dashboardSummaryCacheKey(selectedDate, selectedRangeDays),
-      );
-      if (cached && active) {
-        setSummaryData({ ...emptySummary, ...cached.summary });
-        setInsulinCurves(cached.insulin_curves ?? []);
-      }
+      const cached = await getCached<SummaryData>(dashboardSummaryCacheKey(selectedDate, selectedRangeDays));
+      if (cached && active) setSummaryData({ ...emptySummary, ...cached });
       fetchDashboardSummary();
     })();
     return () => {
@@ -119,20 +131,35 @@ function DashboardContent() {
     };
   }, [fetchPassiveCalorie]);
 
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const cached = await getCached<InsulinCurve[]>(INSULIN_CURVES_CACHE_KEY);
+      if (cached && active) setInsulinCurves(cached);
+      fetchInsulinCurves();
+    })();
+    return () => {
+      active = false;
+    };
+  }, [fetchInsulinCurves]);
+
   const insulinChart = useMemo(() => {
-    // The chart's x-axis runs from 3 AM to the next 3 AM rather than midnight to midnight,
-    // so every minute is rebased into that display window before being plotted.
+    // Rolling last-24-hours window ending now, expressed as minutes-since-window-start (0-1440)
+    // so every point (which may fall on either of the two fetched calendar days) lands on one axis.
+    const windowEnd = Date.now();
+    const windowStart = windowEnd - 24 * 60 * 60 * 1000;
+    const WINDOW_MINUTES = 24 * 60;
     const contributions = new Map<number, number>();
-    const keyMinutes = new Set<number>([0, 360, 720, 1080, 1439]);
+    const keyMinutes = new Set<number>([0, 360, 720, 1080, WINDOW_MINUTES]);
     insulinCurves.forEach((curve) => {
       if (!curve.timestamp) return;
-      const logDate = new Date(curve.timestamp);
-      const baseMinute = logDate.getHours() * 60 + logDate.getMinutes();
+      const logTime = new Date(curve.timestamp).getTime();
       curve.points.forEach((point) => {
-        const absoluteMinute = (((baseMinute + point.minute) % 1440) + 1440) % 1440;
-        const displayMinute = toDisplayMinutes(absoluteMinute);
-        keyMinutes.add(displayMinute);
-        contributions.set(displayMinute, (contributions.get(displayMinute) ?? 0) + Math.max(0, point.value - 8));
+        const absoluteMs = logTime + point.minute * 60000;
+        if (absoluteMs < windowStart || absoluteMs > windowEnd) return;
+        const minute = Math.round((absoluteMs - windowStart) / 60000);
+        keyMinutes.add(minute);
+        contributions.set(minute, (contributions.get(minute) ?? 0) + Math.max(0, point.value - 8));
       });
     });
     const series = Array.from(keyMinutes)
@@ -142,7 +169,7 @@ function DashboardContent() {
     // Insulin sits near the baseline (8) at rest; treat small deviations as "back to normal".
     const NORMAL_MAX = 14;
     const points = series.map((point) => ({
-      x: normalizeToPercent(point.minute, 0, 1439),
+      x: normalizeToPercent(point.minute, 0, WINDOW_MINUTES),
       y: 100 - normalizeToPercent(point.value, 0, maxValue),
       normal: point.value <= NORMAL_MAX,
     }));
@@ -218,7 +245,7 @@ function DashboardContent() {
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
             <View style={styles.cardHeaderTop}>
-              <Text style={styles.cardLabel}>Insulin level today</Text>
+              <Text style={styles.cardLabel}>Insulin — last 24 hours</Text>
               <View style={styles.insulinNormalBadge}>
                 <Feather name="zap" size={13} color={colors.green} />
                 <Text style={styles.insulinNormalText}>{insulinChart.normalPercent}% normal</Text>
@@ -249,16 +276,18 @@ function DashboardContent() {
             </View>
           </View>
           <View style={styles.xAxis}>
-            {[0, 360, 720, 1080, 1439].map((displayMinute) => (
-              <Text key={displayMinute} style={styles.axisText}>
-                {displayMinute === 0 || displayMinute === 1439 ? formatHour(fromDisplayMinutes(0)) : formatHour(fromDisplayMinutes(displayMinute))}
+            {["-24h", "-18h", "-12h", "-6h", "Now"].map((label) => (
+              <Text key={label} style={styles.axisText}>
+                {label}
               </Text>
             ))}
           </View>
           <Text style={styles.chartLegend}>
             <Text style={{ color: "#16a34a" }}>Green</Text> normal · <Text style={{ color: colors.blue }}>Blue</Text> raised — watch how long a meal keeps it up
           </Text>
-          {!insulinChart.hasData && <Text style={styles.chartEmptyHint}>Log a meal to see how it moves your insulin.</Text>}
+          {!insulinChart.hasData && (
+            <Text style={styles.chartEmptyHint}>Log a meal to see how it moves your insulin over the last 24 hours.</Text>
+          )}
         </View>
 
         <DashboardTrackers />
@@ -267,6 +296,7 @@ function DashboardContent() {
         logDate={selectedDate}
         onLogged={() => {
           fetchDashboardSummary();
+          fetchInsulinCurves();
         }}
       />
     </GradientScreen>
