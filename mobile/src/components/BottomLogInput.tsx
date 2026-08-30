@@ -1,21 +1,10 @@
-import React, { useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Keyboard,
-  KeyboardAvoidingView,
-  PanResponder,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import React, { useState } from "react";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SignedOutError, useApi } from "@/hooks/useApi";
 import { colors } from "@/styles/theme";
-import { formatSliderTime, fromDisplayMinutes, toDisplayMinutes, toYMD } from "@/utils/date";
+import { formatMonthShort, toYMD } from "@/utils/date";
 
 export type LogResult = {
   calories_intake?: number;
@@ -26,9 +15,27 @@ export type LogResult = {
   sugar?: number;
 };
 
+// Chronological through the day, so the chips read left-to-right the way meals actually happen.
+const MEAL_PRESETS: { label: string; minutes: number }[] = [
+  { label: "Breakfast", minutes: 8 * 60 },
+  { label: "Lunch", minutes: 13 * 60 },
+  { label: "Snack", minutes: 16 * 60 },
+  { label: "Dinner", minutes: 20 * 60 },
+  { label: "Midnight", minutes: 0 },
+];
+
 function getCurrentMinutes() {
   const now = new Date();
   return now.getHours() * 60 + now.getMinutes();
+}
+
+// daysAgo=0 is Today, 1 is Yesterday; anything further back shows as "DD MMM" (e.g. "28 Aug").
+function formatDayLabel(daysAgo: number) {
+  if (daysAgo === 0) return "Today";
+  if (daysAgo === 1) return "Yesterday";
+  const date = new Date();
+  date.setDate(date.getDate() - daysAgo);
+  return `${date.getDate()} ${formatMonthShort(date.getTime())}`;
 }
 
 export function BottomLogInput({ onLogged }: { onLogged: (data: LogResult) => void }) {
@@ -36,28 +43,9 @@ export function BottomLogInput({ onLogged }: { onLogged: (data: LogResult) => vo
   const insets = useSafeAreaInsets();
   const [input, setInput] = useState("");
   const [logTimeMinutes, setLogTimeMinutes] = useState(() => getCurrentMinutes());
+  const [daysAgo, setDaysAgo] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-
-  useEffect(() => {
-    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSubscription = Keyboard.addListener(showEvent, (event) => {
-      setKeyboardVisible(true);
-      setKeyboardHeight(event?.endCoordinates?.height ?? 0);
-    });
-    const hideSubscription = Keyboard.addListener(hideEvent, () => {
-      setKeyboardVisible(false);
-      setKeyboardHeight(0);
-    });
-
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, []);
 
   const submit = async () => {
     if (!input.trim()) return;
@@ -68,16 +56,20 @@ export function BottomLogInput({ onLogged }: { onLogged: (data: LogResult) => vo
       // Always the true calendar date paired with the true clock time (not the dashboard's
       // logical/3-AM-shifted "today"), so the backend can reconstruct a real, monotonic
       // timestamp. The 3 AM tracking-day boundary is applied when the entry is later queried,
-      // not when it's created.
+      // not when it's created. `daysAgo` (from the day stepper) shifts which calendar date
+      // that is; it never affects the clock time, which comes from the meal presets below.
+      const logDate = new Date();
+      logDate.setDate(logDate.getDate() - daysAgo);
       const data = await authedFetch<LogResult>("/log_input", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sentence: userText, date: toYMD(new Date()), log_time_minutes: logTimeMinutes }),
+        body: JSON.stringify({ sentence: userText, date: toYMD(logDate), log_time_minutes: logTimeMinutes }),
         fallbackErrorMessage: "Request failed",
       });
       onLogged(data);
       setInput("");
       setLogTimeMinutes(getCurrentMinutes());
+      setDaysAgo(0);
     } catch (err) {
       if (err instanceof SignedOutError) {
         setErrorMessage("Session expired. Please sign in again.");
@@ -89,47 +81,55 @@ export function BottomLogInput({ onLogged }: { onLogged: (data: LogResult) => vo
     }
   };
 
-  // Lift the bar so it sits directly above the on-screen keyboard on both platforms.
-  // Under RN's current edge-to-edge Android handling, the reported keyboard height
-  // already includes the nav-bar inset, so adding insets.bottom again here would push
-  // the whole bar (and its placeholder) well above the keyboard instead of resting on it.
-  const restingMargin = Math.max(insets.bottom, 14);
-  const footerMargin = keyboardVisible && keyboardHeight > 0 ? keyboardHeight + 8 : restingMargin;
-
   return (
-    <KeyboardAvoidingView pointerEvents="box-none" behavior={undefined} keyboardVerticalOffset={0} style={styles.footerLayer}>
-      <View style={[styles.footer, { marginBottom: footerMargin }]}>
+    // The bar is a normal (non-absolute) sibling below the screen's ScrollView, so it takes its
+    // own space at the bottom rather than floating over content. That lets Android's own
+    // windowSoftInputMode="resize" (set in app.json) shrink the whole screen - including this
+    // bar's position - when the keyboard opens, without any manual height math on our side.
+    // iOS has no such native resize, so it still needs KeyboardAvoidingView's "padding" behavior.
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.footerLayer}>
+      <View style={[styles.footer, { marginBottom: Math.max(insets.bottom, 14) }]}>
         {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
         {!!input.trim() && (
-          <View style={styles.timeBox}>
-            <View style={styles.timeHeader}>
-              <Text style={styles.timeLabel}>
-                Log time <Text style={styles.timeHint}>(select approx time if not current time)</Text>
-              </Text>
-              <Pressable style={styles.nowButton} onPress={() => setLogTimeMinutes(getCurrentMinutes())}>
-                <Text style={styles.nowButtonText}>{formatSliderTime(logTimeMinutes)}</Text>
-                <Text style={styles.nowButtonHint}>tap for now</Text>
+          <View style={styles.logDetails}>
+            <View style={styles.dayStepperRow}>
+              <View style={styles.dayStepper}>
+                <Pressable
+                  style={styles.stepperArrow}
+                  onPress={() => setDaysAgo((d) => d + 1)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Log for an earlier day"
+                >
+                  <Text style={styles.stepperArrowText}>−</Text>
+                </Pressable>
+                <Text style={styles.stepperLabel}>{formatDayLabel(daysAgo)}</Text>
+                <Pressable
+                  style={[styles.stepperArrow, daysAgo === 0 && styles.stepperArrowDisabled]}
+                  onPress={() => setDaysAgo((d) => Math.max(0, d - 1))}
+                  disabled={daysAgo === 0}
+                  accessibilityRole="button"
+                  accessibilityLabel="Log for the next day"
+                >
+                  <Text style={[styles.stepperArrowText, daysAgo === 0 && styles.stepperArrowTextDisabled]}>+</Text>
+                </Pressable>
+              </View>
+              <Pressable style={styles.nowButton} onPress={() => setLogTimeMinutes(getCurrentMinutes())} accessibilityRole="button" accessibilityLabel="Use current time">
+                <Text style={styles.nowButtonText}>Now</Text>
               </Pressable>
             </View>
-            <View style={styles.timeSteps}>
-              {[0, 360, 720, 1080, 1439].map((displayMinute) => {
-                const minute = fromDisplayMinutes(displayMinute);
-                const label = displayMinute === 0 || displayMinute === 1439 ? formatSliderTime(fromDisplayMinutes(0)) : formatSliderTime(minute);
+
+            <View style={styles.mealRow}>
+              {MEAL_PRESETS.map((meal) => {
+                const active = logTimeMinutes === meal.minutes;
                 return (
-                  <Pressable key={displayMinute} style={styles.timeStep} onPress={() => setLogTimeMinutes(minute)}>
-                    <Text
-                      style={[
-                        styles.timeStepText,
-                        Math.abs(toDisplayMinutes(logTimeMinutes) - displayMinute) < 120 && styles.timeStepActive,
-                      ]}
-                    >
-                      {label.replace(":00 ", "")}
+                  <Pressable key={meal.label} style={[styles.mealChip, active && styles.mealChipActive]} onPress={() => setLogTimeMinutes(meal.minutes)}>
+                    <Text style={[styles.mealChipText, active && styles.mealChipTextActive]} numberOfLines={1} adjustsFontSizeToFit>
+                      {meal.label}
                     </Text>
                   </Pressable>
                 );
               })}
             </View>
-            <TimeSlider value={logTimeMinutes} onChange={setLogTimeMinutes} />
           </View>
         )}
         <View style={styles.row}>
@@ -151,65 +151,9 @@ export function BottomLogInput({ onLogged }: { onLogged: (data: LogResult) => vo
   );
 }
 
-function TimeSlider({ value, onChange }: { value: number; onChange: (minutes: number) => void }) {
-  const [trackWidth, setTrackWidth] = useState(0);
-  const trackWidthRef = useRef(0);
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
-
-  // Track the last value we know about so external resets (e.g. the "now" button) stay in sync.
-  const lastEmitted = useRef(value);
-  lastEmitted.current = value;
-
-  const updateFromX = (x: number) => {
-    const width = trackWidthRef.current;
-    if (width <= 0) return;
-    const ratio = Math.min(1, Math.max(0, x / width));
-    const nextDisplay = Math.round((ratio * 1439) / 5) * 5;
-    const next = fromDisplayMinutes(nextDisplay);
-    if (next === lastEmitted.current) return;
-    lastEmitted.current = next;
-    onChangeRef.current(next);
-  };
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onStartShouldSetPanResponderCapture: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponderCapture: () => true,
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: (evt) => updateFromX(evt.nativeEvent.locationX),
-      onPanResponderMove: (evt) => updateFromX(evt.nativeEvent.locationX),
-    }),
-  ).current;
-
-  const ratio = Math.min(1, Math.max(0, toDisplayMinutes(value) / 1439));
-
-  return (
-    <View
-      style={styles.sliderTrack}
-      onLayout={(e) => {
-        const w = e.nativeEvent.layout.width;
-        trackWidthRef.current = w;
-        setTrackWidth(w);
-      }}
-      {...panResponder.panHandlers}
-    >
-      <View pointerEvents="none" style={styles.sliderBar} />
-      <View pointerEvents="none" style={[styles.sliderFill, { width: ratio * trackWidth }]} />
-      <View pointerEvents="none" style={[styles.sliderThumb, { left: Math.max(0, ratio * trackWidth - 9) }]} />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   footerLayer: {
-    position: "absolute",
-    left: 12,
-    right: 12,
-    bottom: 0,
-    justifyContent: "flex-end",
+    paddingHorizontal: 12,
   },
   footer: {
     padding: 10,
@@ -228,38 +172,27 @@ const styles = StyleSheet.create({
     color: "#b91c1c",
     fontSize: 12,
   },
-  timeBox: {
+  logDetails: {
     padding: 10,
+    gap: 10,
     borderWidth: 1,
     borderColor: colors.line,
     borderRadius: 13,
     backgroundColor: colors.panel,
   },
-  timeHeader: {
+  dayStepperRow: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 6,
   },
-  timeLabel: {
-    flex: 1,
-    marginRight: 8,
-    color: colors.muted,
-    fontSize: 12,
-  },
-  timeHint: {
-    color: colors.quiet,
-    fontSize: 11,
-  },
-  timeValue: {
-    color: colors.ink,
-    fontWeight: "700",
-    fontSize: 13,
+  dayStepper: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
   },
   nowButton: {
-    alignItems: "center",
     paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.ink,
@@ -268,57 +201,63 @@ const styles = StyleSheet.create({
   nowButtonText: {
     color: colors.ink,
     fontWeight: "700",
-    fontSize: 13,
+    fontSize: 12,
   },
-  nowButtonHint: {
+  stepperArrow: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.line,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.panel,
+  },
+  stepperArrowDisabled: {
+    opacity: 0.35,
+  },
+  stepperArrowText: {
+    color: colors.ink,
+    fontSize: 17,
+    fontWeight: "700",
+    lineHeight: 19,
+  },
+  stepperArrowTextDisabled: {
     color: colors.quiet,
-    fontSize: 9,
-    letterSpacing: 0.3,
-    textTransform: "uppercase",
   },
-  timeSteps: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  timeStep: {
-    paddingVertical: 4,
-  },
-  timeStepText: {
-    color: colors.quiet,
-    fontSize: 11,
-  },
-  timeStepActive: {
+  stepperLabel: {
+    minWidth: 84,
+    textAlign: "center",
     color: colors.ink,
     fontWeight: "700",
+    fontSize: 14,
   },
-  sliderTrack: {
-    marginTop: 10,
-    height: 26,
+  mealRow: {
+    flexDirection: "row",
+    gap: 4,
+  },
+  mealChip: {
+    flex: 1,
+    paddingHorizontal: 2,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.line,
+    alignItems: "center",
     justifyContent: "center",
+    backgroundColor: colors.panel,
   },
-  sliderBar: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: colors.line,
-  },
-  sliderFill: {
-    position: "absolute",
-    left: 0,
-    height: 4,
-    borderRadius: 999,
+  mealChipActive: {
     backgroundColor: colors.ink,
+    borderColor: colors.ink,
   },
-  sliderThumb: {
-    position: "absolute",
-    width: 18,
-    height: 18,
-    borderRadius: 999,
-    backgroundColor: colors.ink,
-    borderWidth: 2,
-    borderColor: colors.panel,
+  mealChipText: {
+    color: colors.ink,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  mealChipTextActive: {
+    color: colors.panel,
   },
   row: {
     flexDirection: "row",

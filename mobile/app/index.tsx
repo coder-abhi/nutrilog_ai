@@ -17,7 +17,7 @@ import { ApiError } from "@/utils/apiClient";
 import { getCached, setCached } from "@/utils/cache";
 import { normalizeToPercent } from "@/utils/chart";
 import { INSULIN_CURVES_CACHE_KEY, PASSIVE_CALORIE_CACHE_KEY, dashboardSummaryCacheKey } from "@/utils/cacheKeys";
-import { formatDisplayDate, getCurrentMinutes, logicalToYMD, toYMD } from "@/utils/date";
+import { formatDisplayDate, getCurrentMinutes, logicalDate, logicalToYMD, toYMD } from "@/utils/date";
 
 type DashboardRange = "today" | "week" | "month";
 type InsulinCurve = { timestamp: string | null; points: { minute: number; value: number }[] };
@@ -85,11 +85,11 @@ function DashboardContent() {
     }
   }, [authedFetch, user?.username]);
 
-  // The insulin graph always shows a rolling last-24-hours window (plus a short lookahead for
-  // the predicted curve of a just-logged meal), independent of the today/week/month range
-  // picker above. Fetching 3 calendar days guarantees full coverage no matter what time it is
-  // now, including right after the 3 AM tracking-day boundary, when "today" alone would miss
-  // most of the window.
+  // The insulin graph always shows the current logical day (since 3 AM, same boundary as
+  // trackers/streaks elsewhere) plus a short lookahead for the predicted curve of a just-logged
+  // meal, independent of the today/week/month range picker above. Fetching 3 calendar days
+  // guarantees full coverage no matter what time it is now, including right after the 3 AM
+  // boundary, when "today" alone would miss most of the window.
   const fetchInsulinCurves = useCallback(async () => {
     if (!user?.username) return;
     try {
@@ -151,30 +151,56 @@ function DashboardContent() {
   const FUTURE_LOOKAHEAD_MINUTES = 240;
 
   const insulinChart = useMemo(() => {
-    // Rolling last-24-hours window plus a short lookahead, expressed as minutes-since-window-start
-    // so every point (which may fall on any of the fetched calendar days) lands on one axis.
-    // "Now" therefore isn't the right edge of the chart - it's marked explicitly instead.
+    // Window starts at 3 AM of the current logical day (the same day-boundary used for trackers
+    // and streaks) plus a short lookahead, expressed as minutes-since-window-start so every point
+    // (which may fall on any of the fetched calendar days) lands on one axis. "Now" therefore
+    // isn't the right edge of the chart - it's marked explicitly instead. The span from 3 AM to
+    // now is inherently dynamic (a few hours right after 3 AM, up to ~24h just before the next
+    // 3 AM), so nothing downstream can assume a fixed width.
     const nowMs = Date.now();
-    const windowStart = nowMs - 24 * 60 * 60 * 1000;
-    const windowEnd = nowMs + FUTURE_LOOKAHEAD_MINUTES * 60 * 1000;
-    const NOW_MINUTE = 24 * 60;
+    const dayStart = logicalDate(new Date(nowMs));
+    dayStart.setHours(3, 0, 0, 0);
+    const windowStart = dayStart.getTime();
+    const NOW_MINUTE = Math.round((nowMs - windowStart) / 60000);
     const WINDOW_MINUTES = NOW_MINUTE + FUTURE_LOOKAHEAD_MINUTES;
-    const contributions = new Map<number, number>();
-    const keyMinutes = new Set<number>([0, 360, 720, 1080, NOW_MINUTE, WINDOW_MINUTES]);
-    insulinCurves.forEach((curve) => {
-      if (!curve.timestamp) return;
+    const BASELINE = 8;
+    // The backend samples each meal's curve every 10 minutes, but different meals are logged at
+    // different times, so their sample minutes don't line up with each other. Summing curves by
+    // matching only exact-minute samples (as this used to) meant that at any given instant, only
+    // whichever curve happened to have a sample land there contributed - other overlapping curves
+    // silently dropped out, producing sharp up/down spikes that looked like bars instead of one
+    // smooth line. Resampling every curve onto the same 10-minute grid via interpolation fixes that.
+    const GRID_STEP_MINUTES = 10;
+
+    // How much a single meal's curve is raising insulin above baseline at an absolute instant,
+    // via linear interpolation between that curve's own points. 0 outside the curve's own span
+    // (before it was logged, or after its ~4-hour response has fully played out).
+    const sampleCurveExcess = (curve: InsulinCurve, atMs: number) => {
+      if (!curve.timestamp || curve.points.length === 0) return 0;
       const logTime = new Date(curve.timestamp).getTime();
-      curve.points.forEach((point) => {
-        const absoluteMs = logTime + point.minute * 60000;
-        if (absoluteMs < windowStart || absoluteMs > windowEnd) return;
-        const minute = Math.round((absoluteMs - windowStart) / 60000);
-        keyMinutes.add(minute);
-        contributions.set(minute, (contributions.get(minute) ?? 0) + Math.max(0, point.value - 8));
-      });
+      const relativeMinute = (atMs - logTime) / 60000;
+      const points = curve.points;
+      const first = points[0];
+      const last = points[points.length - 1];
+      if (relativeMinute < first.minute || relativeMinute > last.minute) return 0;
+      for (let i = 0; i < points.length - 1; i += 1) {
+        const a = points[i];
+        const b = points[i + 1];
+        if (relativeMinute >= a.minute && relativeMinute <= b.minute) {
+          const t = b.minute === a.minute ? 0 : (relativeMinute - a.minute) / (b.minute - a.minute);
+          return Math.max(0, a.value + (b.value - a.value) * t - BASELINE);
+        }
+      }
+      return 0;
+    };
+
+    const gridCount = Math.floor(WINDOW_MINUTES / GRID_STEP_MINUTES);
+    const series = Array.from({ length: gridCount + 1 }, (_, i) => {
+      const minute = Math.min(WINDOW_MINUTES, i * GRID_STEP_MINUTES);
+      const atMs = windowStart + minute * 60000;
+      const excess = insulinCurves.reduce((sum, curve) => sum + sampleCurveExcess(curve, atMs), 0);
+      return { minute, value: Math.min(100, BASELINE + excess) };
     });
-    const series = Array.from(keyMinutes)
-      .sort((a, b) => a - b)
-      .map((minute) => ({ minute, value: Math.min(100, 8 + (contributions.get(minute) ?? 0)) }));
     const maxValue = Math.max(20, ...series.map((point) => point.value));
     // Insulin sits near the baseline (8) at rest; treat small deviations as "back to normal".
     const NORMAL_MAX = 14;
@@ -200,11 +226,10 @@ function DashboardContent() {
         if (normal) normalMinutes += segmentMinutes;
       }
     }
+    // The window's width varies with the time of day, so ticks are just the three fixed
+    // reference points rather than a fixed set of hour offsets.
     const xTicks = [
-      { minute: 0, label: "-24h" },
-      { minute: 360, label: "-18h" },
-      { minute: 720, label: "-12h" },
-      { minute: 1080, label: "-6h" },
+      { minute: 0, label: "3 AM" },
       { minute: NOW_MINUTE, label: "Now" },
       { minute: WINDOW_MINUTES, label: `+${Math.round(FUTURE_LOOKAHEAD_MINUTES / 60)}h` },
     ].map((tick) => ({ ...tick, pct: normalizeToPercent(tick.minute, 0, WINDOW_MINUTES) }));
@@ -228,7 +253,7 @@ function DashboardContent() {
   return (
     <GradientScreen>
       <Header />
-      <ScrollView contentContainerStyle={styles.main} keyboardShouldPersistTaps="handled">
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.main} keyboardShouldPersistTaps="handled">
         <View style={styles.topBar}>
           <View style={styles.datePill}>
             <Text style={styles.dateText}>{formatDisplayDate(selectedDate)}</Text>
@@ -272,7 +297,7 @@ function DashboardContent() {
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
             <View style={styles.cardHeaderTop}>
-              <Text style={styles.cardLabel}>Insulin — last 24 hours</Text>
+              <Text style={styles.cardLabel}>Insulin — since 3 AM</Text>
               <View style={styles.insulinNormalBadge}>
                 <Feather name="zap" size={13} color={colors.green} />
                 <Text style={styles.insulinNormalText}>{insulinChart.normalPercent}% normal</Text>
@@ -325,7 +350,7 @@ function DashboardContent() {
             <Text style={{ color: colors.quiet }}>dashed</Text> predicted — watch how long a meal keeps it up
           </Text>
           {!insulinChart.hasData && (
-            <Text style={styles.chartEmptyHint}>Log a meal to see how it moves your insulin over the last 24 hours.</Text>
+            <Text style={styles.chartEmptyHint}>Log a meal to see how it moves your insulin since 3 AM.</Text>
           )}
         </View>
 
@@ -351,9 +376,12 @@ function Macro({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  scroll: {
+    flex: 1,
+  },
   main: {
     padding: 16,
-    paddingBottom: 180,
+    paddingBottom: 24,
     gap: 16,
   },
   hero: {
