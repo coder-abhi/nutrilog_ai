@@ -129,10 +129,7 @@ export function DashboardTrackers() {
   return (
     <View style={styles.section}>
       <View style={styles.headerRow}>
-        <Text style={styles.sectionTitle}>
-          {showingDemoCards ? "Example trackers" : "Active trackers"}{" "}
-          <Text style={styles.sectionHint}>{showingDemoCards ? "(create your own to log real data)" : "(double tap or hold to edit)"}</Text>
-        </Text>
+        <Text style={styles.sectionTitle}>Active trackers</Text>
         <Link href="/tracker" asChild>
           <Pressable>
             <Text style={styles.manageLink}>{showingDemoCards ? "New tracker" : "Manage"}</Text>
@@ -245,7 +242,6 @@ const styles = StyleSheet.create({
   section: { gap: 10 },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   sectionTitle: { color: colors.ink, fontSize: 18, fontWeight: "700" },
-  sectionHint: { color: colors.quiet, fontSize: 12, fontWeight: "500" },
   manageLink: { color: colors.blue, fontSize: 13, fontWeight: "600" },
   errorState: { borderRadius: 10, backgroundColor: colors.redSoft, color: colors.red, padding: 10, fontSize: 12, fontWeight: "700" },
   card: { backgroundColor: colors.panel, borderRadius: 14, padding: 12, gap: 8, ...shadow },

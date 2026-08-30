@@ -90,11 +90,11 @@ export function BottomLogInput({ onLogged }: { onLogged: (data: LogResult) => vo
   };
 
   // Lift the bar so it sits directly above the on-screen keyboard on both platforms.
-  // In Android edge-to-edge mode the reported keyboard height excludes the nav-bar
-  // inset, so add it back to keep the whole input (and its placeholder) visible.
+  // Under RN's current edge-to-edge Android handling, the reported keyboard height
+  // already includes the nav-bar inset, so adding insets.bottom again here would push
+  // the whole bar (and its placeholder) well above the keyboard instead of resting on it.
   const restingMargin = Math.max(insets.bottom, 14);
-  const keyboardLift = keyboardHeight + (Platform.OS === "android" ? insets.bottom : 0);
-  const footerMargin = keyboardVisible && keyboardHeight > 0 ? keyboardLift + 8 : restingMargin;
+  const footerMargin = keyboardVisible && keyboardHeight > 0 ? keyboardHeight + 8 : restingMargin;
 
   return (
     <KeyboardAvoidingView pointerEvents="box-none" behavior={undefined} keyboardVerticalOffset={0} style={styles.footerLayer}>

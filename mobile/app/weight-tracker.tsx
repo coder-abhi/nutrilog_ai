@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import Svg, { Circle, Line, Polyline } from "react-native-svg";
 
 import { useAuth } from "@/auth/AuthContext";
@@ -10,8 +10,19 @@ import { Segmented } from "@/components/Segmented";
 import { SignedOutError, useApi } from "@/hooks/useApi";
 import { colors, formErrorText, shadow } from "@/styles/theme";
 import { evenXPosition, normalizeToPercent } from "@/utils/chart";
-import { formatEntryDate, formatMonthShort, logicalToYMD } from "@/utils/date";
+import { formatEntryDate, formatLongDate, formatMonthShort, formatMonthYear, logicalToYMD } from "@/utils/date";
 import { validatePositiveNumber } from "@/utils/validation";
+
+const weekdayLabels = ["S", "M", "T", "W", "T", "F", "S"];
+
+function getDaysInMonth(year: number, month: number): (number | null)[] {
+  const first = new Date(year, month, 1);
+  const last = new Date(year, month + 1, 0);
+  const grid: (number | null)[] = [];
+  for (let i = 0; i < first.getDay(); i += 1) grid.push(null);
+  for (let d = 1; d <= last.getDate(); d += 1) grid.push(d);
+  return grid;
+}
 
 type WeightEntry = { value_kg: number; recorded_at: string | null };
 type RangeKey = "year" | "all";
@@ -151,7 +162,7 @@ function WeightTrackerContent() {
           <Text style={styles.sectionTitle}>Log weight</Text>
           <View style={styles.formRow}>
             <Field label="Weight (kg)" value={logWeightValue} onChangeText={setLogWeightValue} placeholder="e.g. 70" keyboardType="decimal-pad" />
-            <Field label="Date" value={logWeightDate} onChangeText={setLogWeightDate} placeholder="YYYY-MM-DD" />
+            <DatePickerField label="Date" value={logWeightDate} onChange={setLogWeightDate} />
             <Pressable style={styles.button} onPress={logWeight} disabled={submitting}>
               <Text style={styles.buttonText}>{submitting ? "..." : "Log weight"}</Text>
             </Pressable>
@@ -243,6 +254,85 @@ function Field(props: React.ComponentProps<typeof TextInput> & { label: string }
   );
 }
 
+function DatePickerField({ label, value, onChange }: { label: string; value: string; onChange: (ymd: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [viewDate, setViewDate] = useState(() => new Date());
+
+  const openPicker = () => {
+    const [y, m, d] = value.split("-").map(Number);
+    setViewDate(new Date(y || new Date().getFullYear(), (m || 1) - 1, d || 1));
+    setOpen(true);
+  };
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+
+  return (
+    <View style={styles.field}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <Pressable style={styles.dateInput} onPress={openPicker} accessibilityRole="button">
+        <Text style={styles.dateInputText}>{formatLongDate(value)}</Text>
+      </Pressable>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <Pressable style={styles.pickerBackdrop} onPress={() => setOpen(false)}>
+          <Pressable style={styles.pickerCard} onPress={() => {}}>
+            <View style={styles.pickerHeader}>
+              <Pressable style={styles.chevronBtn} onPress={() => setViewDate(new Date(year, month - 1, 1))} accessibilityRole="button" accessibilityLabel="Previous month">
+                <Text style={styles.chevronText}>‹</Text>
+              </Pressable>
+              <Text style={styles.pickerMonthLabel}>{formatMonthYear(viewDate)}</Text>
+              <Pressable style={styles.chevronBtn} onPress={() => setViewDate(new Date(year, month + 1, 1))} accessibilityRole="button" accessibilityLabel="Next month">
+                <Text style={styles.chevronText}>›</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.pickerWeekRow}>
+              {weekdayLabels.map((day, i) => (
+                <Text key={`${day}-${i}`} style={styles.pickerWeekLabel}>
+                  {day}
+                </Text>
+              ))}
+            </View>
+            <View style={styles.pickerGrid}>
+              {getDaysInMonth(year, month).map((day, index) => {
+                if (day === null) return <View key={`empty-${index}`} style={styles.pickerDayCell} />;
+                const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+                const selected = dateStr === value;
+                const today = dateStr === logicalToYMD();
+                return (
+                  <Pressable
+                    key={dateStr}
+                    style={styles.pickerDayCell}
+                    onPress={() => {
+                      onChange(dateStr);
+                      setOpen(false);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={dateStr}
+                  >
+                    <Text style={[styles.pickerDayText, today && !selected && styles.pickerDayTextToday, selected && styles.pickerDayTextSelected]}>{day}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Pressable
+              style={styles.pickerTodayBtn}
+              onPress={() => {
+                onChange(logicalToYMD());
+                setOpen(false);
+              }}
+            >
+              <Text style={styles.pickerTodayText}>Today</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   main: { padding: 16, gap: 16, paddingBottom: 32 },
   hero: { gap: 4 },
@@ -258,6 +348,23 @@ const styles = StyleSheet.create({
   field: { gap: 4 },
   fieldLabel: { color: colors.ink, fontSize: 13, fontWeight: "600" },
   input: { minHeight: 43, borderRadius: 8, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 12, color: colors.ink, fontSize: 16 },
+  dateInput: { minHeight: 43, borderRadius: 8, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 12, justifyContent: "center" },
+  dateInputText: { color: colors.ink, fontSize: 16 },
+  pickerBackdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.35)", alignItems: "center", justifyContent: "center", padding: 24 },
+  pickerCard: { width: "100%", maxWidth: 340, backgroundColor: colors.panel, borderRadius: 18, padding: 16, gap: 12, ...shadow },
+  pickerHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  chevronBtn: { width: 30, height: 30, borderRadius: 999, backgroundColor: colors.line, alignItems: "center", justifyContent: "center" },
+  chevronText: { color: colors.ink, fontSize: 18, lineHeight: 20 },
+  pickerMonthLabel: { color: colors.ink, fontWeight: "700", fontSize: 15 },
+  pickerWeekRow: { flexDirection: "row" },
+  pickerWeekLabel: { width: `${100 / 7}%`, textAlign: "center", color: colors.inkSoft, fontSize: 11, fontWeight: "600" },
+  pickerGrid: { flexDirection: "row", flexWrap: "wrap" },
+  pickerDayCell: { width: `${100 / 7}%`, height: 40, alignItems: "center", justifyContent: "center" },
+  pickerDayText: { width: 32, height: 32, borderRadius: 999, textAlign: "center", lineHeight: 32, color: colors.ink, fontSize: 14 },
+  pickerDayTextToday: { borderWidth: 1.5, borderColor: colors.blue, color: colors.blue, fontWeight: "700" },
+  pickerDayTextSelected: { backgroundColor: colors.ink, color: colors.panel, fontWeight: "700" },
+  pickerTodayBtn: { alignSelf: "center", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: colors.line },
+  pickerTodayText: { color: colors.ink, fontWeight: "700", fontSize: 13 },
   button: { alignSelf: "flex-start", borderRadius: 8, backgroundColor: colors.ink, paddingHorizontal: 16, paddingVertical: 10 },
   buttonText: { color: "#f9fafb", fontWeight: "600" },
   error: formErrorText,
